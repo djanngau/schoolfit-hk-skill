@@ -55,7 +55,7 @@ cow skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 
 - Slug: `schoolfit-hk`
 - Owner: `djanngau`
-- Version: `0.1.0`
+- Version: `0.1.1`
 - Moderation: `CLEAN`
 
 ## Smoke Test
