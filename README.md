@@ -13,7 +13,16 @@ The skill wraps SchoolFit HK features for:
 
 ## Install
 
-After this repo is published to GitHub:
+From ClawHub:
+
+```text
+/skill install clawhub:schoolfit-hk
+ark skill install clawhub:schoolfit-hk
+```
+
+ClawHub listing: https://clawhub.ai/djanngau/schoolfit-hk
+
+From GitHub:
 
 ```text
 /skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk

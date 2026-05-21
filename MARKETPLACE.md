@@ -8,6 +8,10 @@ SchoolFit HK
 
 https://github.com/djanngau/schoolfit-hk-skill
 
+## ClawHub Listing
+
+https://clawhub.ai/djanngau/schoolfit-hk
+
 ## Install Path
 
 ```text
@@ -41,9 +45,18 @@ education, hong-kong, school-selection, secondary-school, admissions, vacancies,
 ## Suggested Marketplace Commands
 
 ```text
+/skill install clawhub:schoolfit-hk
+ark skill install clawhub:schoolfit-hk
 /skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 cow skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 ```
+
+## ClawHub Release
+
+- Slug: `schoolfit-hk`
+- Owner: `djanngau`
+- Version: `0.1.0`
+- Moderation: `CLEAN`
 
 ## Smoke Test
 
