@@ -1,7 +1,7 @@
 ---
 name: schoolfit-hk
 description: Use when helping Hong Kong families search, compare, shortlist, or assess secondary schools with SchoolFit HK data, including admissions notices, EDB vacancy signals, Band references, and conservative school-selection advice.
-version: 0.3.0
+version: 1.0.0
 metadata: {"openclaw":{"homepage":"https://github.com/djanngau/schoolfit-hk-skill","skillKey":"schoolfit-hk","default_enabled":true,"requires":{"bins":["python3"]},"envVars":[{"name":"SCHOOLFIT_BASE_URL","required":false,"description":"Optional SchoolFit HK base URL. Must remain https://schoolfit.hk."}]}}
 ---
 
@@ -17,22 +17,36 @@ Use this skill to help families make conservative Hong Kong secondary-school dec
 - Do not query local Postgres, Prisma, SQLite, JSON snapshots, or the Edu source tree for user answers.
 - Keep official facts, third-party Band references, public review summaries, vacancy data, and admission notices visibly separate.
 - Never call `/api/agent/chat` in v1. It can consume LLM resources and create persistent sessions; it is reserved for a future paid/API-gated version.
-- A reserved client code is sent as `X-SchoolFit-Skill-Code` by the helper. Treat it as a future billing hook, not as a secret.
+- First use requires a trial activation code. Ask the user to open `https://schoolfit.hk/skill-code`, generate a code, and send it back to the Agent. The helper sends it as `X-SchoolFit-Skill-Code`.
+- The code is a trial-run authorization and telemetry key, not a password, payment token, or student identity.
 
 ## Quick Commands
 
 Use `<base_dir>` as the directory that contains this `SKILL.md`.
 
+Before the first search, activate the skill:
+
+```bash
+python3 <base_dir>/scripts/schoolfit_api.py metadata --skill-code "PASTE_CODE_FROM_SCHOOLFIT"
+```
+
+If the user has no code yet, reply with:
+
+```text
+請先打開 https://schoolfit.hk/skill-code 取得授權碼，複製後發給我，我再幫你查學校。
+```
+
 Search schools:
 
 ```bash
-python3 <base_dir>/scripts/schoolfit_api.py search-schools --q "沙田 Band 1 英文 男女校" --page-size 10 --format markdown
+python3 <base_dir>/scripts/schoolfit_api.py search-schools --skill-code "PASTE_CODE" --q "沙田 Band 1 英文 男女校" --page-size 10 --format markdown
 ```
 
 Smart advisor search for polished model answers:
 
 ```bash
 python3 <base_dir>/scripts/schoolfit_api.py advisor-search \
+  --skill-code "PASTE_CODE" \
   --q "沙田 Band 1 英文 男女校" \
   --district "沙田區" \
   --banding "Band 1" \
@@ -47,8 +61,8 @@ python3 <base_dir>/scripts/schoolfit_api.py advisor-search \
 Deep compare and next-step planning:
 
 ```bash
-python3 <base_dir>/scripts/schoolfit_api.py deep-compare sha-tin-methodist-college,ying-wa-girls-school --include-detail --format markdown
-python3 <base_dir>/scripts/schoolfit_api.py school-report st-paul-s-co-educational-college --student-profile-json '{"banding":"Band 1B","district":"沙田區"}' --format markdown
+python3 <base_dir>/scripts/schoolfit_api.py deep-compare sha-tin-methodist-college,ying-wa-girls-school --skill-code "PASTE_CODE" --include-detail --format markdown
+python3 <base_dir>/scripts/schoolfit_api.py school-report st-paul-s-co-educational-college --skill-code "PASTE_CODE" --student-profile-json '{"banding":"Band 1B","district":"沙田區"}' --format markdown
 ```
 
 Use `application-plan` for concrete deadlines and reminders:

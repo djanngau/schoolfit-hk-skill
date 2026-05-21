@@ -26,6 +26,8 @@ class SchoolFitApiTests(unittest.TestCase):
 
     def test_compare_limits_ids_to_four(self):
         args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
             "compare",
             "a,b,c,d,e",
         ])
@@ -47,6 +49,8 @@ class SchoolFitApiTests(unittest.TestCase):
 
     def test_advisor_search_calls_search_and_recommend_when_profile_is_present(self):
         args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
             "advisor-search",
             "--q",
             "沙田英文中學",
@@ -102,6 +106,8 @@ class SchoolFitApiTests(unittest.TestCase):
 
     def test_advisor_search_can_skip_recommendation(self):
         args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
             "advisor-search",
             "--q",
             "沙田",
@@ -150,6 +156,8 @@ class SchoolFitApiTests(unittest.TestCase):
 
     def test_deep_compare_limits_ids_to_four(self):
         args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
             "deep-compare",
             "a,b,c,d,e",
             "--format",
@@ -163,6 +171,8 @@ class SchoolFitApiTests(unittest.TestCase):
 
     def test_school_report_builds_checklist_and_ledger(self):
         args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
             "school-report",
             "sha-tin-methodist-college",
             "--format",
@@ -201,6 +211,8 @@ class SchoolFitApiTests(unittest.TestCase):
 
     def test_application_plan_contains_timeline(self):
         args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
             "application-plan",
             "--school-slugs",
             "sha-tin-methodist-college,ying-wa-girls-school",
@@ -238,6 +250,18 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertIn("checklist", output)
         self.assertIn("reminders", output)
         self.assertEqual(output["plan"]["timeline"][0], "T-30：核對提交清單。")
+
+    def test_missing_skill_code_returns_activation_guide(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "search-schools",
+            "--q",
+            "沙田",
+        ])
+        with mock.patch.object(schoolfit_api, "request_json") as request:
+            output = schoolfit_api.run(args)
+        self.assertFalse(request.called)
+        self.assertTrue(output["needsActivation"])
+        self.assertEqual(output["activationUrl"], "https://schoolfit.hk/skill-code")
 
 
 if __name__ == "__main__":

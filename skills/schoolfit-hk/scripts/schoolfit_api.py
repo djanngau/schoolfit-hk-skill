@@ -8,10 +8,12 @@ not read local databases, Prisma files, snapshots, cookies, or private keys.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
 import time
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -20,11 +22,28 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "0.3.0"
+SKILL_VERSION = "1.0.0"
 MAX_COMPARE_IDS = 4
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
 TIMEOUT_SECONDS = 15
 RETRIES = 2
+SKILL_CODE_HEADER = "X-SchoolFit-Skill-Code"
+SKILL_TRACE_HEADER = "X-SchoolFit-Skill-Trace-Id"
+SKILL_VERSION_HEADER = "X-SchoolFit-Skill-Version"
+SKILL_ACTIVATION_STATUS_HEADER = "X-SchoolFit-Skill-Activation-Status"
+ACTIVATION_PAGE_URL = "https://schoolfit.hk/skill-code"
+SKILL_REQUIRES_CODE_MESSAGE = (
+    "請先開啟 https://schoolfit.hk/skill-code 取得授權碼，並加入 --skill-code 參數後重試。"
+)
+SKILL_ACTIVATION_HINT = (
+    "請先到 https://schoolfit.hk/skill-code 取得授權碼，複製後傳給 Agent。"
+)
+SKILL_USAGE_EVENT = "command_run"
+SKILL_TELEMETRY_ENDPOINT = "/api/skill/telemetry"
+SKILL_CODE_HASH_PREFIX_LEN = 8
+
+TraceId = str
+ActivationMode = str
 
 
 class SchoolFitError(RuntimeError):
@@ -40,6 +59,83 @@ def validate_base_url(base_url: str) -> str:
     if parsed.username or parsed.password or parsed.port:
         raise SchoolFitError("Base URL must not include credentials or custom ports.")
     return base_url.rstrip("/")
+
+
+def next_trace_id() -> TraceId:
+    return f"sf_{int(time.time() * 1000)}_{os.urandom(6).hex()}"
+
+
+def code_hash_prefix(code: str | None) -> str:
+    if not code:
+        return ""
+    normalized = code.strip()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:SKILL_CODE_HASH_PREFIX_LEN]
+
+
+def code_display(code: str | None) -> str:
+    if not code:
+        return ""
+    normalized = code.strip()
+    if len(normalized) <= 8:
+        return normalized
+    return f"{normalized[:4]}...{normalized[-4:]}"
+
+
+def get_skill_code(args: argparse.Namespace) -> str | None:
+    explicit = getattr(args, "skill_code", None)
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip()
+    env_code = os.environ.get("SCHOOLFIT_SKILL_CODE", "").strip()
+    return env_code or None
+
+
+def activation_required_output(command: str, trace_id: TraceId, code: str | None = None, reason: str = "missing_code") -> dict[str, Any]:
+    return {
+        "needsActivation": True,
+        "activationStatus": "inactive",
+        "activationReason": reason,
+        "activationUrl": ACTIVATION_PAGE_URL,
+        "message": SKILL_REQUIRES_CODE_MESSAGE,
+        "example": f"python3 scripts/schoolfit_api.py {command} --skill-code YOUR_CODE",
+        "skillVersion": SKILL_VERSION,
+        "traceId": trace_id,
+        "schoolfitUrl": DEFAULT_BASE_URL,
+        "code": {
+            "display": code_display(code),
+            "hashPrefix": code_hash_prefix(code),
+        },
+        "sourceLedger": build_source_ledger(),
+    }
+
+
+def attach_runtime_metadata(output: dict[str, Any], *, activation_status: ActivationMode, trace_id: TraceId, code: str | None) -> dict[str, Any]:
+    output["activationStatus"] = activation_status
+    output["skillVersion"] = SKILL_VERSION
+    output["traceId"] = trace_id
+    output["schoolfitUrl"] = output.get("schoolfitUrl") or DEFAULT_BASE_URL
+    output["skillCodeHashPrefix"] = code_hash_prefix(code)
+    return output
+
+
+def activate_skill_code(base_url: str, code: str | None, trace_id: TraceId) -> ActivationMode:
+    if not code:
+        return "inactive"
+    if code == SCHOOLFIT_SKILL_CLIENT_CODE:
+        return "reserved"
+    try:
+        result = request_json(
+            "POST",
+            base_url,
+            f"/api/skill/codes/{urllib.parse.quote(code, safe='')}/activate",
+            body={"skillVersion": SKILL_VERSION, "traceId": trace_id, "agentHint": "openclaw"},
+            skill_code=code,
+            trace_id=trace_id,
+            activation_status="activating",
+        )
+    except SchoolFitError:
+        return "inactive"
+    status = str((result or {}).get("activationStatus") or (result or {}).get("status") or "").lower()
+    return "active" if status == "active" else "inactive"
 
 
 def clean_params(params: dict[str, Any]) -> dict[str, str]:
@@ -154,14 +250,22 @@ def request_json(
     *,
     params: dict[str, Any] | None = None,
     body: dict[str, Any] | None = None,
+    skill_code: str | None = None,
+    trace_id: TraceId | None = None,
+    activation_status: ActivationMode = "reserved",
 ) -> Any:
     url = make_url(base_url, path, params)
     data = None
+    code = skill_code or SCHOOLFIT_SKILL_CLIENT_CODE
     headers = {
         "Accept": "application/json",
         "User-Agent": f"schoolfit-openclaw-skill/{SKILL_VERSION}",
-        "X-SchoolFit-Skill-Code": SCHOOLFIT_SKILL_CLIENT_CODE,
+        SKILL_CODE_HEADER: code,
+        SKILL_VERSION_HEADER: SKILL_VERSION,
+        SKILL_ACTIVATION_STATUS_HEADER: activation_status,
     }
+    if trace_id:
+        headers[SKILL_TRACE_HEADER] = trace_id
     if body is not None:
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
         headers["Content-Type"] = "application/json"
@@ -187,6 +291,57 @@ def request_json(
                 continue
             break
     raise SchoolFitError(f"SchoolFit API request failed: {last_error}") from None
+
+
+def record_telemetry(
+    base_url: str,
+    *,
+    command: str,
+    status: str,
+    trace_id: TraceId,
+    skill_code: str | None,
+    activation_status: ActivationMode,
+    latency_ms: int | None = None,
+    error_code: str | None = None,
+) -> None:
+    if not skill_code or skill_code == SCHOOLFIT_SKILL_CLIENT_CODE:
+        return
+    event = {
+        "skill_version": SKILL_VERSION,
+        "command": command,
+        "status": status,
+        "trace_id": trace_id,
+        "schoolfit_code_hash_prefix": code_hash_prefix(skill_code),
+        "activation_status": activation_status,
+        "latency_ms": latency_ms,
+        "error_code": error_code,
+    }
+
+    def send() -> None:
+        try:
+            request_json(
+                "POST",
+                base_url,
+                SKILL_TELEMETRY_ENDPOINT,
+                body={
+                    "events": [{
+                        "eventName": SKILL_USAGE_EVENT,
+                        "endpoint": command,
+                        "statusCode": 200 if status == "success" else 500,
+                        "errorCode": error_code,
+                        "traceId": trace_id,
+                        "skillCodeHashPrefix": code_hash_prefix(skill_code),
+                        "payload": event,
+                    }]
+                },
+                skill_code=skill_code,
+                trace_id=trace_id,
+                activation_status=activation_status,
+            )
+        except Exception:
+            return
+
+    threading.Thread(target=send, daemon=True).start()
 
 
 def safe_http_error(exc: urllib.error.HTTPError) -> str:
@@ -967,6 +1122,7 @@ def print_caveats() -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Call the public SchoolFit HK API safely.")
     parser.add_argument("--base-url", default=os.environ.get("SCHOOLFIT_BASE_URL", DEFAULT_BASE_URL))
+    parser.add_argument("--skill-code", help="SchoolFit Skill activation code from https://schoolfit.hk/skill-code. Can also be set via SCHOOLFIT_SKILL_CODE.")
     parser.add_argument("--format", choices=["json", "markdown"], default="json")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -1046,6 +1202,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def add_output_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--format", choices=["json", "markdown"], default=argparse.SUPPRESS)
+    parser.add_argument("--skill-code", default=argparse.SUPPRESS, help="SchoolFit Skill activation code.")
 
 
 def add_common_filters(parser: argparse.ArgumentParser) -> None:
@@ -1178,10 +1335,41 @@ def should_recommend(args: argparse.Namespace) -> bool:
 def run(args: argparse.Namespace) -> dict[str, Any]:
     base_url = validate_base_url(args.base_url)
     command = args.command
+    trace_id = next_trace_id()
+    skill_code = get_skill_code(args)
+    started_at = time.time()
+    activation_status = activate_skill_code(base_url, skill_code, trace_id)
+    if activation_status == "inactive":
+        output = activation_required_output(command, trace_id, skill_code)
+        record_telemetry(
+            base_url,
+            command=command,
+            status="needs_activation",
+            trace_id=trace_id,
+            skill_code=skill_code,
+            activation_status=activation_status,
+            latency_ms=int((time.time() - started_at) * 1000),
+            error_code="needs_activation",
+        )
+        return output
+
+    def api(method: str, path: str, *, params: dict[str, Any] | None = None, body: dict[str, Any] | None = None) -> Any:
+        return request_json(
+            method,
+            base_url,
+            path,
+            params=params,
+            body=body,
+            skill_code=skill_code,
+            trace_id=trace_id,
+            activation_status=activation_status,
+        )
+
+    payload: Any
     if command == "search-schools":
-        payload = request_json("GET", base_url, "/api/schools", params=school_search_params(args))
+        payload = api("GET", "/api/schools", params=school_search_params(args))
     elif command == "advisor-search":
-        payload = request_json("GET", base_url, "/api/skill/search-advisor", params={
+        payload = api("GET", "/api/skill/search-advisor", params={
             **school_search_params(args),
             "intent": (args.intent or "auto"),
             "priorities": args.priorities,
@@ -1197,22 +1385,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         })
     elif command == "school-detail":
         slug = urllib.parse.quote(args.slug.strip(), safe="")
-        payload = request_json("GET", base_url, f"/api/schools/{slug}")
+        payload = api("GET", f"/api/schools/{slug}")
     elif command == "compare":
         ids = normalize_csv_list(args.ids)[:MAX_COMPARE_IDS]
         if not ids:
             raise SchoolFitError("At least one school id/slug is required.")
-        payload = request_json("GET", base_url, "/api/compare", params={"ids": ids})
+        payload = api("GET", "/api/compare", params={"ids": ids})
     elif command == "deep-compare":
         ids = normalize_csv_list(args.ids)[:MAX_COMPARE_IDS]
         if not ids:
             raise SchoolFitError("At least one school id/slug is required.")
-        compare_payload = request_json("GET", base_url, "/api/compare", params={"ids": ids})
+        compare_payload = api("GET", "/api/compare", params={"ids": ids})
         details: list[Any] = []
         if getattr(args, "include_detail", False):
             for school_id in ids:
                 try:
-                    details.append(request_json("GET", base_url, f"/api/schools/{urllib.parse.quote(school_id, safe='')}"))
+                    details.append(api("GET", f"/api/schools/{urllib.parse.quote(school_id, safe='')}"))
                 except SchoolFitError:
                     continue
         payload = {
@@ -1226,9 +1414,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "details": details,
         }
     elif command == "recommend":
-        payload = request_json("POST", base_url, "/api/agent/recommend", body=recommendation_body_from_args(args))
+        payload = api("POST", "/api/agent/recommend", body=recommendation_body_from_args(args))
     elif command == "vacancies":
-        payload = request_json("GET", base_url, "/api/vacancies", params={
+        payload = api("GET", "/api/vacancies", params={
             "schoolId": args.school_id,
             "district": args.district,
             "grade": args.grade,
@@ -1240,7 +1428,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "pageSize": args.page_size,
         })
     elif command == "admissions":
-        payload = request_json("GET", base_url, "/api/admission-notices", params={
+        payload = api("GET", "/api/admission-notices", params={
             "schoolId": args.school_id,
             "grade": args.grade,
             "isActive": args.is_active,
@@ -1251,7 +1439,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         })
     elif command == "school-report":
         slug = urllib.parse.quote(args.slug.strip(), safe="")
-        school_decision_payload = request_json("GET", base_url, f"/api/skill/schools/{slug}/decision-brief")
+        school_decision_payload = api("GET", f"/api/skill/schools/{slug}/decision-brief")
         student_profile = sanitize_student_profile(read_json_arg(getattr(args, "student_profile_json", None)))
         school_payload = (school_decision_payload or {}).get("school", {}) if isinstance(school_decision_payload, dict) else {}
         vacancy_payload = (school_decision_payload or {}).get("vacancy", {}) if isinstance(school_decision_payload, dict) else {}
@@ -1271,9 +1459,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if not school_ids:
             raise SchoolFitError("At least one target school slug is required.")
         student_profile = sanitize_student_profile(read_json_arg(getattr(args, "student_profile_json", None)))
-        payload = request_json(
+        payload = api(
             "GET",
-            base_url,
             "/api/skill/application-plan",
             params={
                 "schoolSlugs": ",".join(school_ids[:MAX_COMPARE_IDS]),
@@ -1283,7 +1470,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             }
         )
     elif command == "metadata":
-        payload = request_json("GET", base_url, "/api/skill/metadata")
+        payload = api("GET", "/api/skill/metadata")
     elif command == "marketplace-demo":
         payload = {
             "examples": [
@@ -1308,7 +1495,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         }
     else:
         raise SchoolFitError(f"Unsupported command: {command}")
-    return compact_output(command, payload)
+    output = attach_runtime_metadata(
+        compact_output(command, payload),
+        activation_status=activation_status,
+        trace_id=trace_id,
+        code=skill_code,
+    )
+    record_telemetry(
+        base_url,
+        command=command,
+        status="success",
+        trace_id=trace_id,
+        skill_code=skill_code,
+        activation_status=activation_status,
+        latency_ms=int((time.time() - started_at) * 1000),
+    )
+    return output
 
 
 def main() -> int:
