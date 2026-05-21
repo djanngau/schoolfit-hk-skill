@@ -209,27 +209,35 @@ class SchoolFitApiTests(unittest.TestCase):
             "--format",
             "json",
         ])
-        with mock.patch.object(schoolfit_api, "request_json", side_effect=[
-            {
-                "id": "s1",
-                "slug": "sha-tin-methodist-college",
-                "nameZh": "沙田中學",
+        with mock.patch.object(schoolfit_api, "request_json", return_value={
+            "plan": {
+                "deadlineWindowDays": 30,
+                "timeline": ["T-30：核對提交清單。"],
             },
-            {"count": 0, "vacancies": []},
-            {"count": 0, "notices": []},
-            {
-                "id": "s2",
-                "slug": "ying-wa-girls-school",
-                "nameZh": "英華女書院",
-            },
-            {"count": 0, "vacancies": []},
-            {"count": 0, "notices": []},
-        ]) as request:
+            "schools": [
+                {
+                    "slug": "sha-tin-methodist-college",
+                    "nameZh": "沙田中學",
+                    "vacancy": {"summary": {"dataMonth": "2026-05"}},
+                    "admission": {"summary": {"nextDeadline": "2026-06-01"}},
+                    "schoolfitUrl": "https://schoolfit.hk/schools/sha-tin-methodist-college",
+                }
+            ],
+            "checklist": ["確認成績單與申請文件", "核對學校官網截止日"],
+            "reminders": [{"school": "沙田中學", "message": "確認面試文具", "deadline": "2026-06-01"}],
+        }) as request:
             output = schoolfit_api.run(args)
-        self.assertEqual(request.call_count, 6)
-        self.assertIn("items", output)
-        self.assertTrue(any("申請" in item for item in output["items"]))
-        self.assertEqual(output["plan"]["timeline"][0], "T-45：完成每校初篩（申請條件、校風、通勤、Band 參考）。")
+        self.assertEqual(request.call_count, 1)
+        self.assertEqual(request.call_args.args[0], "GET")
+        self.assertEqual(request.call_args.args[2], "/api/skill/application-plan")
+        self.assertEqual(
+            request.call_args.kwargs["params"]["schoolSlugs"],
+            "sha-tin-methodist-college,ying-wa-girls-school"
+        )
+        self.assertIn("schools", output)
+        self.assertIn("checklist", output)
+        self.assertIn("reminders", output)
+        self.assertEqual(output["plan"]["timeline"][0], "T-30：核對提交清單。")
 
 
 if __name__ == "__main__":

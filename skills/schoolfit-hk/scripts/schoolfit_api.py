@@ -20,7 +20,7 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "0.2.0"
+SKILL_VERSION = "0.3.0"
 MAX_COMPARE_IDS = 4
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
 TIMEOUT_SECONDS = 15
@@ -301,11 +301,15 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
         output["llmBrief"] = build_school_report_llm_brief(output)
         return output
     if command == "application-plan":
+        school_results = payload.get("schools", [])
         output = {
             "plan": payload.get("plan", {}),
+            "schools": school_results,
+            "checklist": payload.get("checklist", []),
+            "reminders": payload.get("reminders", []),
             "items": payload.get("items", []),
-            "sourceLedger": source_ledger,
             "notes": SOURCE_NOTES,
+            "sourceLedger": payload.get("sourceLedger", source_ledger),
         }
         return output
     if command == "marketplace-demo":
@@ -893,13 +897,53 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         print_caveats()
         return
     if command == "application-plan":
+        plan = data.get("plan") or {}
         print("## SchoolFit HK 申請計劃")
         for item in data.get("items", [])[:20]:
             print(f"- {item}")
-        plan = data.get("plan") or {}
+
+        schools = data.get("schools") or []
+        if schools:
+            print("\n### 目標學校")
+            for school in schools[:4]:
+                print(f"- {school.get('nameZh') or school.get('nameEn') or school.get('slug')}")
+                if school.get("schoolfitUrl"):
+                    print(f"  - SchoolFit: {school.get('schoolfitUrl')}")
+                if school.get("officialUrl"):
+                    print(f"  - 官網: {school.get('officialUrl')}")
+                vacancy = (school.get("vacancy") or {}).get("summary") or {}
+                if vacancy.get("dataMonth") or vacancy.get("lastSeenAt"):
+                    print(
+                        "  - 學額: "
+                        + f"dataMonth={vacancy.get('dataMonth')} | lastSeenAt={vacancy.get('lastSeenAt')} | "
+                          f"confidence={vacancy.get('vacancies', [{}])[0].get('confidence') if vacancy.get('vacancies') else 'N/A'}"
+                    )
+                admission = (school.get("admission") or {}).get("summary") or {}
+                if admission.get("nextDeadline") or admission.get("noticeCount"):
+                    print(
+                        "  - 招生: "
+                        + f"nextDeadline={admission.get('nextDeadline')} | noticeCount={admission.get('noticeCount')} | "
+                          f"active={admission.get('activeNoticeCount')}"
+                    )
+
         print(f"\n### 建議節奏")
         for line in plan.get("timeline", []):
             print(f"- {line}")
+
+        checklist = data.get("checklist") or []
+        if checklist:
+            print("\n### 核對清單")
+            for item in checklist:
+                print(f"- {item}")
+
+        reminders = data.get("reminders") or []
+        if reminders:
+            print("\n### 截止/跟進提醒")
+            for item in reminders[:20]:
+                line = f"- {item.get('school')}: {item.get('message')}"
+                if item.get("deadline"):
+                    line += f" (deadline={item.get('deadline')})"
+                print(line)
         print_caveats()
         return
     if command == "marketplace-demo":
@@ -1227,39 +1271,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if not school_ids:
             raise SchoolFitError("At least one target school slug is required.")
         student_profile = sanitize_student_profile(read_json_arg(getattr(args, "student_profile_json", None)))
-        plan_items: list[str] = [
-            f"共規劃 {len(school_ids)} 間目標學校：{', '.join(school_ids)}。",
-            "先按學區、通勤時間、學校官方招生網址與截止日排序。",
-            "建立每校最晚申請截止日與補件檢查清單。",
-            "安排每 3-5 天一次的資料回檢與補位追蹤。",
-        ]
-        details = []
-        for school_id in school_ids[:MAX_COMPARE_IDS]:
-            slug = urllib.parse.quote(school_id, safe="")
-            school_payload = request_json("GET", base_url, f"/api/schools/{slug}")
-            school_id_value = school_payload.get("id") if isinstance(school_payload, dict) else school_id
-            vacancy_payload = request_json("GET", base_url, "/api/vacancies", params={"schoolId": school_id_value}) if school_id_value else {}
-            admission_payload = request_json("GET", base_url, "/api/admission-notices", params={"schoolId": school_id_value, "pageSize": 20}) if school_id_value else {}
-            details.append({
-                "school": school_payload,
-                "vacancies": normalize_vacancy_payload(vacancy_payload),
-                "admissions": normalize_admission_payload(admission_payload),
-            })
-            if (admission_payload.get("notices") if isinstance(admission_payload, dict) else None):
-                plan_items.append(f"{school_id}：確認招生截止日和申請表連結。")
-            if (vacancy_payload.get("vacancies") if isinstance(vacancy_payload, dict) else None):
-                plan_items.append(f"{school_id}：核實學額最後更新時間。")
-        grade = getattr(args, "grade", "S1")
-        payload = {
-            "plan": {
-                "grade": grade,
+        payload = request_json(
+            "GET",
+            base_url,
+            "/api/skill/application-plan",
+            params={
+                "schoolSlugs": ",".join(school_ids[:MAX_COMPARE_IDS]),
+                "grade": getattr(args, "grade", "S1"),
+                "studentProfile": json.dumps(student_profile, ensure_ascii=False) if student_profile else None,
                 "deadlineWindowDays": args.deadline_window_days,
-                "profile": student_profile,
-                "timeline": build_plan_timeline(args.deadline_window_days),
-            },
-            "items": plan_items,
-            "details": details,
-        }
+            }
+        )
     elif command == "metadata":
         payload = request_json("GET", base_url, "/api/skill/metadata")
     elif command == "marketplace-demo":

@@ -1,7 +1,7 @@
 ---
 name: schoolfit-hk
 description: Use when helping Hong Kong families search, compare, shortlist, or assess secondary schools with SchoolFit HK data, including admissions notices, EDB vacancy signals, Band references, and conservative school-selection advice.
-version: 0.2.0
+version: 0.3.0
 metadata: {"openclaw":{"homepage":"https://github.com/djanngau/schoolfit-hk-skill","skillKey":"schoolfit-hk","default_enabled":true,"requires":{"bins":["python3"]},"envVars":[{"name":"SCHOOLFIT_BASE_URL","required":false,"description":"Optional SchoolFit HK base URL. Must remain https://schoolfit.hk."}]}}
 ---
 
@@ -49,7 +49,16 @@ Deep compare and next-step planning:
 ```bash
 python3 <base_dir>/scripts/schoolfit_api.py deep-compare sha-tin-methodist-college,ying-wa-girls-school --include-detail --format markdown
 python3 <base_dir>/scripts/schoolfit_api.py school-report st-paul-s-co-educational-college --student-profile-json '{"banding":"Band 1B","district":"沙田區"}' --format markdown
-python3 <base_dir>/scripts/schoolfit_api.py application-plan --school-slugs sha-tin-methodist-college,ying-wa-girls-school --student-profile-json '{"banding":"Band 1B","grade":"S1","supportNeeds":["EL"],"district":"沙田區"}' --deadline-window-days 45 --format markdown
+```
+
+Use `application-plan` for concrete deadlines and reminders:
+
+```bash
+python3 <base_dir>/scripts/schoolfit_api.py application-plan \
+  --school-slugs sha-tin-methodist-college,ying-wa-girls-school \
+  --student-profile-json '{"banding":"Band 1B","grade":"S1","supportNeeds":["EL"],"district":"沙田區"}' \
+  --deadline-window-days 45 \
+  --format markdown
 python3 <base_dir>/scripts/schoolfit_api.py marketplace-demo --format markdown
 ```
 

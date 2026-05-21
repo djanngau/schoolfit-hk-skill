@@ -1,4 +1,4 @@
-# SchoolFit HK Skill for OpenClaw (v0.2.0)
+# SchoolFit HK Skill for OpenClaw (v0.3.0)
 
 OpenClaw/CowAgent/Claude Code compatible skill for Hong Kong secondary-school selection using the public [SchoolFit HK](https://schoolfit.hk) API.
 
@@ -13,6 +13,7 @@ The skill wraps SchoolFit HK features for:
 - deep compare
 - single-school decision reports
 - practical application planning output
+- application plan with deadline reminders and parent checklist
 - conservative source labeling and decision caveats
 
 ## Install
