@@ -24,7 +24,7 @@ Search, compare, and recommend Hong Kong secondary schools using SchoolFit HK pu
 
 ## Long Description
 
-SchoolFit HK helps OpenClaw, CowAgent, Claude Code, and compatible agents support Hong Kong secondary-school selection workflows. It can run smart advisor search with model-polishable briefs, search schools, inspect school details, compare shortlists, produce Safe / Match / Reach recommendation buckets, query EDB vacancy records, and retrieve school admission notices.
+SchoolFit HK helps OpenClaw, CowAgent, Claude Code, and compatible agents support Hong Kong secondary-school selection workflows. It can run smart advisor search with intent-aware routing, search schools, inspect school details, compare shortlists, deep-compare, produce Safe / Match / Reach recommendation buckets, generate single-school reports, build practical application plans, and retrieve EDB vacancy records/admission notices.
 
 The skill uses only the public `https://schoolfit.hk/api/...` surface. It does not read local databases, Prisma schemas, `.env` files, cookies, private Edu project snapshots, or raw school data dumps.
 
@@ -55,7 +55,7 @@ cow skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 
 - Slug: `schoolfit-hk`
 - Owner: `djanngau`
-- Version: `0.1.1`
+- Version: `0.2.0`
 - Moderation: `CLEAN`
 
 ## Smoke Test
@@ -63,6 +63,8 @@ cow skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 ```bash
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py search-schools --q "沙田 Band 1 英文 男女校" --page-size 5 --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --q "沙田 Band 1 英文 男女校" --district "沙田區" --banding "Band 1" --page-size 5 --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py deep-compare sha-tin-methodist-college,ying-wa-girls-school --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py vacancies --grade S1 --has-vacancy true --page-size 5 --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py school-report sha-tin-methodist-college --format markdown
 python3 -m unittest discover -s tests
 ```

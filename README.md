@@ -1,15 +1,18 @@
-# SchoolFit HK Skill for OpenClaw
+# SchoolFit HK Skill for OpenClaw (v0.2.0)
 
 OpenClaw/CowAgent/Claude Code compatible skill for Hong Kong secondary-school selection using the public [SchoolFit HK](https://schoolfit.hk) API.
 
 The skill wraps SchoolFit HK features for:
 
-- smart advisor search with model-polishable briefs
+- smart advisor search with model-polishable briefs and intent routing
 - school search and detail lookup
 - school comparison
 - Safe / Match / Reach recommendation buckets
 - EDB vacancy records
 - school admission notices
+- deep compare
+- single-school decision reports
+- practical application planning output
 - conservative source labeling and decision caveats
 
 ## Install
@@ -43,7 +46,9 @@ cow skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 ```bash
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py search-schools --q "沙田 Band 1 英文 男女校" --page-size 5 --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --q "沙田 Band 1 英文 男女校" --district "沙田區" --banding "Band 1" --page-size 5 --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py deep-compare sha-tin-methodist-college,ying-wa-girls-school --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py vacancies --grade S1 --has-vacancy true --page-size 5 --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py school-report sha-tin-methodist-college --format markdown
 python3 -m unittest discover -s tests
 ```
 
