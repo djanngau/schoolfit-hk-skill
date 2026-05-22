@@ -1,7 +1,7 @@
 ---
 name: schoolfit-hk
 description: Use when helping Hong Kong families search, compare, shortlist, or assess secondary schools with SchoolFit HK data, including admissions notices, EDB vacancy signals, Band references, and conservative school-selection advice.
-version: 1.0.5
+version: 1.0.6
 metadata: {"openclaw":{"homepage":"https://github.com/djanngau/schoolfit-hk-skill","skillKey":"schoolfit-hk","default_enabled":true,"requires":{"bins":["python3"]},"envVars":[{"name":"SCHOOLFIT_BASE_URL","required":false,"description":"Optional SchoolFit HK base URL. Must remain https://schoolfit.hk."}]}}
 ---
 
@@ -163,6 +163,7 @@ When presenting results:
 - If the user rejects DSS/直資, do not place DSS schools in `首選`, `穩陣`, or `備選`; keep them in `暫不建議` with a clear preference warning.
 - If the user requests 英文環境, English-medium schools should rank above 中英並重, and Chinese-medium schools should be downgraded to `暫不建議` unless the user later relaxes the language preference.
 - Prefer same-district schools first, then nearby districts; cross-district schools need a commute caveat.
+- When a district is inferred or provided, expect `robustSearch` to run a broad fallback and client-side district/filter merge if SchoolFit API full-text or district filters appear to under-return.
 
 ## Supported Workflows
 
@@ -181,6 +182,8 @@ Use `search-schools` when the user asks for schools by district, Band reference,
 - `--vacancy-grade`
 - `--vacancy-status`
 - `--has-vacancy`
+
+For district-only or mixed natural-language searches such as `九龍城 Band 1 女校`, the helper should parse the district and may run robust fallback search. If `robustSearch` appears in output, mention it as a data-quality safeguard rather than an extra source.
 
 ### Advisor Search
 

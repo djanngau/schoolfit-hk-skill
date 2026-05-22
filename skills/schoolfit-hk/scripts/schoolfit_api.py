@@ -23,8 +23,9 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.0.5"
+SKILL_VERSION = "1.0.6"
 MAX_COMPARE_IDS = 4
+ROBUST_SEARCH_PAGE_SIZE = 1000
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
 TIMEOUT_SECONDS = 15
 RETRIES = 2
@@ -814,6 +815,106 @@ def resolve_school_query(name: str) -> str:
     return SCHOOL_NAME_ALIASES.get(normalized, name)
 
 
+def school_identity(school: dict[str, Any]) -> str:
+    return str(school.get("slug") or school.get("id") or f"{school.get('nameZh')}|{school.get('nameEn')}")
+
+
+def client_filter_school(school: dict[str, Any], args: argparse.Namespace) -> bool:
+    district = getattr(args, "district", None)
+    if district and school.get("district") != district:
+        return False
+    banding = getattr(args, "banding", None)
+    if banding and banding not in str(school.get("banding") or school.get("bandingReference") or ""):
+        return False
+    gender = getattr(args, "gender", None)
+    if gender and school.get("gender") != gender:
+        return False
+    medium = getattr(args, "medium", None)
+    if medium and medium not in str(school.get("mediumOfInstruction") or ""):
+        return False
+    funding_type = getattr(args, "funding_type", None)
+    if funding_type and school.get("fundingType") != funding_type:
+        return False
+    accepts_dss = getattr(args, "accepts_dss", None)
+    if accepts_dss is False and school.get("fundingType") == "直資":
+        return False
+    religion = getattr(args, "religion", None)
+    if religion and religion not in str(school.get("religion") or ""):
+        return False
+    max_tuition = getattr(args, "max_tuition", None)
+    tuition = school.get("annualTuitionHkd")
+    if max_tuition is not None and tuition is not None:
+        try:
+            if float(tuition) > float(max_tuition):
+                return False
+        except (TypeError, ValueError):
+            return False
+    has_vacancy = getattr(args, "has_vacancy", None)
+    if has_vacancy is not None:
+        vacancy = school.get("vacancySummary") or {}
+        if vacancy.get("hasAnyVacancy") is not has_vacancy:
+            return False
+    return True
+
+
+def merge_school_payloads(primary: dict[str, Any], fallback: dict[str, Any], args: argparse.Namespace, *, reason: str) -> dict[str, Any]:
+    primary_schools = primary.get("schools", []) if isinstance(primary, dict) else []
+    fallback_schools = fallback.get("schools", []) if isinstance(fallback, dict) else []
+    filtered_primary = [school for school in primary_schools if isinstance(school, dict) and client_filter_school(school, args)]
+    filtered_fallback = [school for school in fallback_schools if isinstance(school, dict) and client_filter_school(school, args)]
+    seen = set()
+    merged: list[dict[str, Any]] = []
+    for school in [*filtered_primary, *filtered_fallback]:
+        if not isinstance(school, dict):
+            continue
+        key = school_identity(school)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(school)
+    output = {**primary}
+    output["schools"] = merged
+    output["count"] = len(merged)
+    output["robustSearch"] = {
+        "enabled": True,
+        "reason": reason,
+        "primaryCount": len(primary_schools),
+        "primaryMatchedCount": len(filtered_primary),
+        "fallbackRawCount": len(fallback_schools),
+        "fallbackMatchedCount": len(filtered_fallback),
+        "mergedCount": len(merged),
+        "caveat": "SchoolFit API district/full-text filters may under-return in some combinations; fallback uses broad API results with client-side district/filter matching.",
+    }
+    return output
+
+
+def should_run_robust_district_search(args: argparse.Namespace, payload: dict[str, Any]) -> bool:
+    district = getattr(args, "district", None)
+    if not district:
+        return False
+    page = getattr(args, "page", None)
+    if page not in (None, 1):
+        return False
+    q = getattr(args, "q", None) or ""
+    primary_count = len(payload.get("schools", []) if isinstance(payload, dict) else [])
+    district_words = [alias for alias, value in DISTRICT_ALIASES.items() if value == district]
+    q_mentions_district = any(word and word in q for word in district_words)
+    return q_mentions_district or primary_count < 20
+
+
+def robust_school_search(api: Any, args: argparse.Namespace, *, reason: str = "district_fulltext_guard") -> dict[str, Any]:
+    primary = api("GET", "/api/schools", params=school_search_params(args))
+    if not isinstance(primary, dict) or not should_run_robust_district_search(args, primary):
+        return primary
+    fallback = api("GET", "/api/schools", params={
+        "page": 1,
+        "pageSize": ROBUST_SEARCH_PAGE_SIZE,
+    })
+    if not isinstance(fallback, dict):
+        return primary
+    return merge_school_payloads(primary, fallback, args, reason=reason)
+
+
 def district_relation(target: str | None, school_district: str | None) -> str:
     if not target or not school_district:
         return "unknown"
@@ -1047,7 +1148,7 @@ def self_check_output() -> dict[str, Any]:
         script = handle.read()
     chat_path = "/api/" + "agent/chat"
     script_checks = [
-        ("version_1_0_5", f'SKILL_VERSION = "{SKILL_VERSION}"' in script),
+        ("version_1_0_6", f'SKILL_VERSION = "{SKILL_VERSION}"' in script),
         ("host_allowlist", "ALLOWED_HOSTS = {\"schoolfit.hk\"}" in script),
         ("activation_page", ACTIVATION_PAGE_URL in script),
         ("pii_guard", "detect_sensitive_input" in script),
@@ -1137,6 +1238,7 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
             "count": payload.get("count", len(schools)),
             "schools": schools,
             "pagination": payload.get("pagination"),
+            "robustSearch": payload.get("robustSearch"),
             "sourceLedger": source_ledger,
             "notes": SOURCE_NOTES,
         }
@@ -1913,6 +2015,12 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         return
     if command == "search-schools":
         print(f"## SchoolFit HK 搜尋結果\n\n共 {data.get('count', 0)} 間。")
+        if data.get("robustSearch"):
+            robust = data["robustSearch"]
+            print(
+                "\n> 已啟用 district 容錯回補："
+                + f"主查詢 {robust.get('primaryCount')} 間，回補匹配 {robust.get('fallbackMatchedCount')} 間，合併 {robust.get('mergedCount')} 間。"
+            )
         for school in data.get("schools", [])[:20]:
             name = school.get("nameZh") or school.get("nameEn") or school.get("slug")
             print(f"- **{name}** ({school.get('district', '地區不明')})")
@@ -2372,6 +2480,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         apply_parsed_request_to_args(args)
     if command == "shortlist-builder":
         apply_parsed_request_to_args(args)
+    if command == "search-schools":
+        apply_parsed_request_to_args(args)
 
     activation_status = activate_skill_code(base_url, skill_code, trace_id)
     if activation_status == "inactive":
@@ -2402,7 +2512,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     payload: Any
     if command == "search-schools":
-        payload = api("GET", "/api/schools", params=school_search_params(args))
+        payload = robust_school_search(api, args)
     elif command == "resolve-school":
         resolved_query = resolve_school_query(args.name)
         payload = api("GET", "/api/schools", params={
@@ -2435,10 +2545,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             payload["parsedSignals"] = parsed.get("recommendationSignals", {})
             search_payload = payload.get("search") if isinstance(payload.get("search"), dict) else payload
             if not (search_payload or {}).get("schools"):
-                fallback = api("GET", "/api/schools", params={
-                    **school_search_params(args),
-                    "q": None,
-                })
+                original_q = getattr(args, "q", None)
+                setattr(args, "q", None)
+                fallback = robust_school_search(api, args, reason="empty_skill_advisor_search")
+                setattr(args, "q", original_q)
                 payload["search"] = fallback
                 payload["fallbackUsed"] = "structured_filter_search"
     elif command == "advisor-search":
@@ -2456,6 +2566,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "noRecommend": getattr(args, "no_recommend", None),
             "includeDecisionBrief": getattr(args, "include_decision_brief", None),
         })
+        if isinstance(payload, dict):
+            search_payload = payload.get("search") if isinstance(payload.get("search"), dict) else {}
+            if should_run_robust_district_search(args, search_payload):
+                fallback = api("GET", "/api/schools", params={
+                    "page": 1,
+                    "pageSize": ROBUST_SEARCH_PAGE_SIZE,
+                })
+                payload["search"] = merge_school_payloads(search_payload, fallback, args, reason="advisor_search_district_guard")
+                payload["fallbackUsed"] = "advisor_search_district_guard"
     elif command == "school-detail":
         slug = urllib.parse.quote(args.slug.strip(), safe="")
         payload = api("GET", f"/api/schools/{slug}")

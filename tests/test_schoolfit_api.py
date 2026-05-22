@@ -99,7 +99,7 @@ class SchoolFitApiTests(unittest.TestCase):
             "admissionAndVacancy": None,
         }) as request:
             output = schoolfit_api.run(args)
-        self.assertEqual(request.call_count, 1)
+        self.assertGreaterEqual(request.call_count, 1)
         self.assertEqual(output["search"]["schools"][0]["schoolfitUrl"], "https://schoolfit.hk/schools/demo-school")
         self.assertEqual(output["recommendation"]["llmBrief"]["topRecommendations"][0]["fitLabel"], "Match")
         self.assertIn("llmBrief", output)
@@ -115,7 +115,7 @@ class SchoolFitApiTests(unittest.TestCase):
         ])
         with mock.patch.object(schoolfit_api, "request_json", return_value={"count": 0, "schools": []}) as request:
             output = schoolfit_api.run(args)
-        self.assertEqual(request.call_count, 1)
+        self.assertGreaterEqual(request.call_count, 1)
         self.assertIsNone(output["recommendation"])
 
     def test_reserved_client_code_header_is_sent(self):
@@ -302,11 +302,87 @@ class SchoolFitApiTests(unittest.TestCase):
         ])
         with mock.patch.object(schoolfit_api, "request_json", return_value={"count": 0, "schools": []}) as request:
             schoolfit_api.run(args)
-        params = request.call_args.kwargs["params"]
+        params = request.call_args_list[0].kwargs["params"]
         self.assertEqual(params["district"], "沙田區")
         self.assertEqual(params["banding"], "Band 1")
         self.assertEqual(params["medium"], "英文")
         self.assertEqual(params["gender"], "男女校")
+
+    def test_search_schools_parses_district_and_runs_robust_fallback(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "search-schools",
+            "--q",
+            "九龍城",
+        ])
+        primary = {"count": 1, "schools": [{"slug": "partial", "nameZh": "只命中文字", "district": "九龍城區"}]}
+        fallback = {
+            "count": 3,
+            "schools": [
+                {"slug": "partial", "nameZh": "只命中文字", "district": "九龍城區"},
+                {"slug": "full-a", "nameZh": "完整甲", "district": "九龍城區"},
+                {"slug": "other", "nameZh": "其他區", "district": "沙田區"},
+            ],
+        }
+        with mock.patch.object(schoolfit_api, "request_json", side_effect=[primary, fallback]) as request:
+            output = schoolfit_api.run(args)
+        self.assertEqual(request.call_count, 2)
+        self.assertEqual(request.call_args.kwargs["params"]["pageSize"], schoolfit_api.ROBUST_SEARCH_PAGE_SIZE)
+        self.assertEqual([school["slug"] for school in output["schools"]], ["partial", "full-a"])
+        self.assertEqual(output["robustSearch"]["primaryMatchedCount"], 1)
+        self.assertEqual(output["robustSearch"]["fallbackMatchedCount"], 2)
+
+    def test_advisor_search_merges_robust_district_fallback(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "advisor-search",
+            "--q",
+            "九龍城 Band 1 女校",
+            "--no-recommend",
+        ])
+        advisor_payload = {
+            "search": {"count": 1, "schools": [{"slug": "partial", "district": "九龍城區", "banding": "Band 1A", "gender": "女校"}]},
+            "intent": "search",
+            "recommendation": None,
+        }
+        fallback = {
+            "count": 2,
+            "schools": [
+                {"slug": "partial", "district": "九龍城區", "banding": "Band 1A", "gender": "女校"},
+                {"slug": "full-a", "district": "九龍城區", "banding": "Band 1B", "gender": "女校"},
+            ],
+        }
+        with mock.patch.object(schoolfit_api, "request_json", side_effect=[advisor_payload, fallback]):
+            output = schoolfit_api.run(args)
+        self.assertEqual([school["slug"] for school in output["search"]["schools"]], ["partial", "full-a"])
+        self.assertEqual(output["search"]["robustSearch"]["reason"], "advisor_search_district_guard")
+
+    def test_robust_fallback_respects_accepts_dss_false(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "advisor-search",
+            "--q",
+            "九龍城 Band 1 女校 英文環境 唔要直資",
+            "--no-recommend",
+        ])
+        advisor_payload = {
+            "search": {"count": 0, "schools": []},
+            "intent": "search",
+            "recommendation": None,
+        }
+        fallback = {
+            "count": 2,
+            "schools": [
+                {"slug": "dss-school", "district": "九龍城區", "banding": "Band 1A", "gender": "女校", "mediumOfInstruction": "英文", "fundingType": "直資"},
+                {"slug": "aided-school", "district": "九龍城區", "banding": "Band 1B", "gender": "女校", "mediumOfInstruction": "英文", "fundingType": "資助"},
+            ],
+        }
+        with mock.patch.object(schoolfit_api, "request_json", side_effect=[advisor_payload, fallback]):
+            output = schoolfit_api.run(args)
+        self.assertEqual([school["slug"] for school in output["search"]["schools"]], ["aided-school"])
 
     def test_privacy_warning_blocks_obvious_pii(self):
         args = schoolfit_api.build_parser().parse_args([
@@ -350,7 +426,7 @@ class SchoolFitApiTests(unittest.TestCase):
             "schoolfit-openclaw-v1-reserved",
             "shortlist-builder",
             "--q",
-            "沙田 Band 1 英文 男女校",
+            "Band 1 英文 男女校",
         ])
         payload = {
             "search": {
@@ -385,7 +461,7 @@ class SchoolFitApiTests(unittest.TestCase):
             "schoolfit-openclaw-v1-reserved",
             "shortlist-builder",
             "--q",
-            "沙田 Band 1 英文 男女校",
+            "Band 1 英文 男女校",
         ])
         empty = {"search": {"count": 0, "schools": []}}
         fallback = {"count": 1, "schools": [{"slug": "demo-a", "nameZh": "示例甲", "mediumOfInstruction": "英文", "banding": "Band 1"}]}

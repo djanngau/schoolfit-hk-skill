@@ -24,7 +24,7 @@ Search, compare, and recommend Hong Kong secondary schools using SchoolFit HK pu
 
 ## Long Description
 
-SchoolFit HK helps OpenClaw, CowAgent, Claude Code, and compatible agents support Hong Kong secondary-school selection workflows. It can run smart advisor search with intent-aware routing, search schools, resolve fuzzy school names and Hong Kong school acronyms, inspect school details, compare shortlists, deep-compare, produce Safe / Match / Reach recommendation buckets, generate 首選/穩陣/備選 shortlist buckets with stricter English-environment and district ranking, generate single-school reports, build practical application plans, and retrieve EDB vacancy records/admission notices.
+SchoolFit HK helps OpenClaw, CowAgent, Claude Code, and compatible agents support Hong Kong secondary-school selection workflows. It can run smart advisor search with intent-aware routing, robust district fallback search, resolve fuzzy school names and Hong Kong school acronyms, inspect school details, compare shortlists, deep-compare, produce Safe / Match / Reach recommendation buckets, generate 首選/穩陣/備選 shortlist buckets with stricter English-environment and district ranking, generate single-school reports, build practical application plans, and retrieve EDB vacancy records/admission notices.
 
 The skill uses only the public `https://schoolfit.hk/api/...` surface. It does not read local databases, Prisma schemas, `.env` files, cookies, private Edu project snapshots, or raw school data dumps.
 
@@ -56,7 +56,7 @@ cow skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 
 - Slug: `schoolfit-hk`
 - Owner: `djanngau`
-- Version: `1.0.5`
+- Version: `1.0.6`
 - Moderation: `CLEAN`
 
 ## Smoke Test
