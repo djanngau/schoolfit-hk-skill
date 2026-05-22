@@ -56,13 +56,15 @@ cow skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 
 - Slug: `schoolfit-hk`
 - Owner: `djanngau`
-- Version: `1.0.0`
+- Version: `1.0.1`
 - Moderation: `CLEAN`
 
 ## Smoke Test
 
 ```bash
 export SCHOOLFIT_SKILL_CODE="PASTE_CODE_FROM_https://schoolfit.hk/skill-code"
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py quick-start --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py parse-parent-request --q "九龍城 Band 1 女校 英文環境 唔要直資 想穩陣" --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py search-schools --q "沙田 Band 1 英文 男女校" --page-size 5 --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --q "沙田 Band 1 英文 男女校" --district "沙田區" --banding "Band 1" --page-size 5 --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py deep-compare sha-tin-methodist-college,ying-wa-girls-school --format markdown

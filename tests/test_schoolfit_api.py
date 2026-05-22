@@ -263,6 +263,70 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertTrue(output["needsActivation"])
         self.assertEqual(output["activationUrl"], "https://schoolfit.hk/skill-code")
 
+    def test_quick_start_does_not_call_api(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "quick-start",
+            "--format",
+            "json",
+        ])
+        with mock.patch.object(schoolfit_api, "request_json") as request:
+            output = schoolfit_api.run(args)
+        self.assertFalse(request.called)
+        self.assertEqual(output["activationStatus"], "not_required")
+        self.assertIn("skill-code", output["steps"][0]["text"])
+
+    def test_parse_parent_request_extracts_local_filters(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "parse-parent-request",
+            "--q",
+            "九龍城 Band 1 女校 英文環境 唔要直資 想穩陣 中一",
+        ])
+        output = schoolfit_api.run(args)
+        self.assertEqual(output["filters"]["district"], "九龍城區")
+        self.assertEqual(output["filters"]["banding"], "Band 1")
+        self.assertEqual(output["filters"]["gender"], "女校")
+        self.assertEqual(output["filters"]["medium"], "英文")
+        self.assertNotIn("fundingType", output["filters"])
+        self.assertFalse(output["recommendationSignals"]["acceptsDss"])
+        self.assertEqual(output["recommendationSignals"]["riskPreference"], "conservative")
+        self.assertEqual(output["filters"]["vacancyGrade"], "S1")
+
+    def test_advisor_search_applies_parsed_filters(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "advisor-search",
+            "--q",
+            "沙田 Band 1 英文 男女校 想穩陣",
+            "--no-recommend",
+        ])
+        with mock.patch.object(schoolfit_api, "request_json", return_value={"count": 0, "schools": []}) as request:
+            schoolfit_api.run(args)
+        params = request.call_args.kwargs["params"]
+        self.assertEqual(params["district"], "沙田區")
+        self.assertEqual(params["banding"], "Band 1")
+        self.assertEqual(params["medium"], "英文")
+        self.assertEqual(params["gender"], "男女校")
+
+    def test_privacy_warning_blocks_obvious_pii(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "advisor-search",
+            "--q",
+            "沙田 Band 1，電話 91234567",
+        ])
+        with mock.patch.object(schoolfit_api, "request_json") as request:
+            output = schoolfit_api.run(args)
+        self.assertFalse(request.called)
+        self.assertTrue(output["privacyWarning"])
+        self.assertEqual(output["detected"][0]["type"], "phone")
+
+    def test_llm_brief_has_facts_only_contract(self):
+        output = schoolfit_api.compact_output("search-schools", {"count": 0, "schools": []})
+        self.assertTrue(output["llmBrief"]["factsOnly"])
+        self.assertIn("doNotInvent", output["llmBrief"])
+
 
 if __name__ == "__main__":
     unittest.main()
