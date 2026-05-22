@@ -396,6 +396,29 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertIsNone(request.call_args.kwargs["params"]["q"])
         self.assertEqual(output["buckets"]["首選"][0]["school"]["slug"], "demo-a")
 
+    def test_shortlist_builder_respects_reject_dss_preference(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "shortlist-builder",
+            "--q",
+            "九龍城 Band 1 女校 英文環境 唔要直資",
+        ])
+        payload = {
+            "search": {
+                "count": 2,
+                "schools": [
+                    {"slug": "dss-school", "nameZh": "直資中學", "fundingType": "直資", "banding": "Band 1A"},
+                    {"slug": "aided-school", "nameZh": "資助中學", "fundingType": "資助", "banding": "Band 1B"},
+                ],
+            }
+        }
+        with mock.patch.object(schoolfit_api, "request_json", return_value=payload):
+            output = schoolfit_api.run(args)
+        self.assertEqual(output["buckets"]["暫不建議"][0]["school"]["slug"], "dss-school")
+        self.assertEqual(output["buckets"]["首選"][0]["school"]["slug"], "aided-school")
+        self.assertTrue(output["preferenceWarnings"])
+
     def test_self_check_is_public_and_ok(self):
         args = schoolfit_api.build_parser().parse_args(["self-check"])
         with mock.patch.object(schoolfit_api, "request_json") as request:

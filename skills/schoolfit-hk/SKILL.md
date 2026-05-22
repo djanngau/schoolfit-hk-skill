@@ -1,7 +1,7 @@
 ---
 name: schoolfit-hk
 description: Use when helping Hong Kong families search, compare, shortlist, or assess secondary schools with SchoolFit HK data, including admissions notices, EDB vacancy signals, Band references, and conservative school-selection advice.
-version: 1.0.2
+version: 1.0.3
 metadata: {"openclaw":{"homepage":"https://github.com/djanngau/schoolfit-hk-skill","skillKey":"schoolfit-hk","default_enabled":true,"requires":{"bins":["python3"]},"envVars":[{"name":"SCHOOLFIT_BASE_URL","required":false,"description":"Optional SchoolFit HK base URL. Must remain https://schoolfit.hk."}]}}
 ---
 
@@ -160,6 +160,7 @@ When presenting results:
 - If the user says "上次", "剛才", "只看女校", "改成九龍城", or similar follow-up wording, preserve previous non-sensitive filters in the chat context and only override the changed field.
 - If the request is too broad, ask at most three missing-info questions: district/commute, Band reference, and DSS/tuition preference.
 - When `rankingRationale` is returned, use it to explain why schools were placed higher; do not imply it is an official ranking.
+- If the user rejects DSS/直資, do not place DSS schools in `首選`, `穩陣`, or `備選`; keep them in `暫不建議` with a clear preference warning.
 
 ## Supported Workflows
 

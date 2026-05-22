@@ -23,7 +23,7 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.0.2"
+SKILL_VERSION = "1.0.3"
 MAX_COMPARE_IDS = 4
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
 TIMEOUT_SECONDS = 15
@@ -897,7 +897,7 @@ def self_check_output() -> dict[str, Any]:
         script = handle.read()
     chat_path = "/api/" + "agent/chat"
     script_checks = [
-        ("version_1_0_2", f'SKILL_VERSION = "{SKILL_VERSION}"' in script),
+        ("version_1_0_3", f'SKILL_VERSION = "{SKILL_VERSION}"' in script),
         ("host_allowlist", "ALLOWED_HOSTS = {\"schoolfit.hk\"}" in script),
         ("activation_page", ACTIVATION_PAGE_URL in script),
         ("pii_guard", "detect_sensitive_input" in script),
@@ -1289,6 +1289,8 @@ def compact_advisor_search(payload: dict[str, Any]) -> dict[str, Any]:
 def compact_shortlist(payload: dict[str, Any]) -> dict[str, Any]:
     search = compact_output("search-schools", payload.get("search", {}))
     schools = search.get("schools", [])
+    parsed_signals = payload.get("parsedSignals") or {}
+    accepts_dss = parsed_signals.get("acceptsDss")
     buckets = {
         "首選": [],
         "穩陣": [],
@@ -1306,6 +1308,12 @@ def compact_shortlist(payload: dict[str, Any]) -> dict[str, Any]:
                 "確認 Band 參考是否仍適合孩子近期香港校內成績。",
             ],
         }
+        if accepts_dss is False and school.get("fundingType") == "直資":
+            buckets["暫不建議"].append({
+                **item,
+                "risk": "家長表示不接受直資，這間屬直資學校，除非改變學費/直資偏好，否則不建議放入主名單。",
+            })
+            continue
         if index < 3 and ("Band 1" in band or vacancy.get("hasAnyVacancy") is True):
             buckets["首選"].append(item)
         elif index < 6:
@@ -1321,6 +1329,7 @@ def compact_shortlist(payload: dict[str, Any]) -> dict[str, Any]:
         "buckets": buckets,
         "missingInfoQuestions": payload.get("missingInfoQuestions", []),
         "conversationHints": payload.get("conversationHints", []),
+        "preferenceWarnings": build_shortlist_preference_warnings(payload, buckets),
         "nextActions": [
             "先從首選和穩陣各挑 2-3 間，到 SchoolFit HK 詳情頁確認。",
             "再按通勤、學費、語言、校風和最新招生/學額訊號縮短名單。",
@@ -1339,9 +1348,18 @@ def compact_shortlist(payload: dict[str, Any]) -> dict[str, Any]:
         {
             "bucketCounts": {key: len(value) for key, value in buckets.items()},
             "missingInfoQuestions": output["missingInfoQuestions"],
+            "preferenceWarnings": output["preferenceWarnings"],
         },
     )
     return output
+
+
+def build_shortlist_preference_warnings(payload: dict[str, Any], buckets: dict[str, list[Any]]) -> list[str]:
+    warnings = []
+    signals = payload.get("parsedSignals") or {}
+    if signals.get("acceptsDss") is False and buckets.get("暫不建議"):
+        warnings.append("已按家長不接受直資的偏好，把直資學校移到暫不建議。")
+    return warnings
 
 
 def schoolfit_school_url(slug: Any) -> str:
@@ -1703,6 +1721,10 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
             print("\n### 可補充資料")
             for question in data.get("missingInfoQuestions", []):
                 print(f"- {question}")
+        if data.get("preferenceWarnings"):
+            print("\n### 偏好提示")
+            for warning in data.get("preferenceWarnings", []):
+                print(f"- {warning}")
         print_caveats()
         return
     if command == "search-schools":
@@ -2226,6 +2248,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             payload["query"] = getattr(args, "q", None)
             payload["missingInfoQuestions"] = parsed.get("missingInfoQuestions", [])
             payload["conversationHints"] = parsed.get("conversationHints", [])
+            payload["parsedSignals"] = parsed.get("recommendationSignals", {})
             search_payload = payload.get("search") if isinstance(payload.get("search"), dict) else payload
             if not (search_payload or {}).get("schools"):
                 fallback = api("GET", "/api/schools", params={
