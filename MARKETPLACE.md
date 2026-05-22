@@ -31,7 +31,7 @@ The skill uses only the public `https://schoolfit.hk/api/...` surface. It does n
 ## Tags
 
 ```text
-education, hong-kong, school-selection, secondary-school, admissions, vacancies, schoolfit, openclaw, cowagent, claude-code
+education, hong-kong, school-selection, secondary-school, admissions, vacancies, schoolfit, openclaw, arkagent, claude-code
 ```
 
 ## Security Notes
@@ -49,7 +49,7 @@ education, hong-kong, school-selection, secondary-school, admissions, vacancies,
 /skill install clawhub:schoolfit-hk
 ark skill install clawhub:schoolfit-hk
 /skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
-cow skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
+ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 ```
 
 ## ClawHub Release

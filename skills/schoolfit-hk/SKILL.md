@@ -7,7 +7,7 @@ metadata: {"openclaw":{"homepage":"https://github.com/djanngau/schoolfit-hk-skil
 
 # SchoolFit HK
 
-Keywords: SchoolFit HK, 啱校, 香港升中, 香港中學, OpenClaw skill, CowAgent skill, Claude Code skill, school selection, admissions, vacancies, Banding, Reach Match Safe, schoolfit.hk.
+Keywords: SchoolFit HK, 啱校, 香港升中, 香港中學, OpenClaw skill, ArkAgent skill, Claude Code skill, school selection, admissions, vacancies, Banding, Reach Match Safe, schoolfit.hk.
 
 Use this skill to help families make conservative Hong Kong secondary-school decisions using the public SchoolFit HK API. The skill must not read local Edu project databases, Prisma files, snapshots, cookies, `.env` files, or private API keys.
 
@@ -283,7 +283,7 @@ Install examples after GitHub publication:
 
 ```text
 /skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
-cow skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
+ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 ```
 
 Marketplace summary:

@@ -1,6 +1,6 @@
 # SchoolFit HK Skill for OpenClaw (v1.0.6)
 
-OpenClaw/CowAgent/Claude Code compatible skill for Hong Kong secondary-school selection using the public [SchoolFit HK](https://schoolfit.hk) API.
+OpenClaw / ArkAgent / Claude Code compatible skill for Hong Kong secondary-school selection using the public [SchoolFit HK](https://schoolfit.hk) API.
 
 The skill wraps SchoolFit HK features for:
 
@@ -36,7 +36,7 @@ From GitHub:
 
 ```text
 /skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
-cow skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
+ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 ```
 
 ## 30-Second Quick Start
