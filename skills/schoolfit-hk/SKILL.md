@@ -1,8 +1,19 @@
 ---
 name: schoolfit-hk
 description: Use when helping Hong Kong families search, compare, shortlist, or assess secondary schools with SchoolFit HK data, including admissions notices, EDB vacancy signals, Band references, and conservative school-selection advice.
-version: 1.0.8
-metadata: {"openclaw":{"homepage":"https://github.com/djanngau/schoolfit-hk-skill","skillKey":"schoolfit-hk","default_enabled":true,"requires":{"bins":["python3"]},"envVars":[{"name":"SCHOOLFIT_BASE_URL","required":false,"description":"Optional SchoolFit HK base URL. Must remain https://schoolfit.hk."}]}}
+version: 1.0.9
+metadata:
+  openclaw:
+    homepage: https://github.com/djanngau/schoolfit-hk-skill
+    skillKey: schoolfit-hk
+    default_enabled: true
+    requires:
+      bins:
+        - python3
+    envVars:
+      - name: SCHOOLFIT_BASE_URL
+        required: false
+        description: Optional SchoolFit HK base URL. Must remain https://schoolfit.hk.
 ---
 
 # SchoolFit HK

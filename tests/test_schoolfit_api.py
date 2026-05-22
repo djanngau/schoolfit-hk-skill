@@ -237,6 +237,18 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertEqual(params["intent"], "admissions")
         self.assertTrue(params["auditData"])
 
+    def test_advisor_search_auto_routes_simplified_vacancy_query(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "advisor-search",
+            "--q",
+            "中三还有学额吗",
+        ])
+        with mock.patch.object(schoolfit_api, "request_json", return_value={"search": {"count": 0, "schools": []}}) as request:
+            schoolfit_api.run(args)
+        params = request.call_args.kwargs["params"]
+        self.assertEqual(params["intent"], "vacancy")
+        self.assertTrue(params["auditData"])
+
     def test_advisor_search_can_disable_auto_audit(self):
         args = schoolfit_api.build_parser().parse_args([
             "advisor-search",
@@ -305,7 +317,7 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertEqual(data, {"ok": True})
         self.assertEqual(captured["headers"]["X-schoolfit-skill-code"], "sfhk_custom_code")
         self.assertEqual(captured["headers"]["X-schoolfit-skill-trace-id"], "sf_trace_1")
-        self.assertEqual(captured["headers"]["X-schoolfit-skill-version"], "1.0.8")
+        self.assertEqual(captured["headers"]["X-schoolfit-skill-version"], schoolfit_api.SKILL_VERSION_HEADER_VERSION)
 
     def test_skill_code_can_appear_after_subcommand(self):
         args = schoolfit_api.build_parser().parse_args([
@@ -411,6 +423,16 @@ class SchoolFitApiTests(unittest.TestCase):
             "json",
         ])
         self.assertEqual(schoolfit_api.infer_intent(args), "compare")
+
+    def test_infer_intent_from_vacancy_synonyms(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "advisor-search",
+            "--q",
+            "想看沙田区中三空位和插班位",
+            "--format",
+            "json",
+        ])
+        self.assertEqual(schoolfit_api.infer_intent(args), "vacancy")
 
     def test_deep_compare_limits_ids_to_four(self):
         args = schoolfit_api.build_parser().parse_args([

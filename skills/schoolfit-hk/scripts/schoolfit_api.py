@@ -23,8 +23,8 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.0.8"
-SKILL_VERSION_HEADER_VERSION = "1.0.8"
+SKILL_VERSION = "1.0.9"
+SKILL_VERSION_HEADER_VERSION = "1.0.9"
 MAX_COMPARE_IDS = 4
 ROBUST_SEARCH_PAGE_SIZE = 1000
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
@@ -283,9 +283,9 @@ def infer_intent(args: argparse.Namespace) -> str:
     q = (getattr(args, "q", "") or "").lower()
     if any(keyword in q for keyword in ("比較", "對比", "比對", "vs", "v.s", "對拋")):
         return "compare"
-    if any(keyword in q for keyword in ("學額", "插班", "vacancy", "學位", "有冇位", "有位")):
+    if any(keyword in q for keyword in ("學額", "学额", "插班", "插班位", "vacancy", "學位", "学位", "空位", "餘額", "余额", "有冇位", "有位", "有无位")):
         return "vacancy"
-    if any(keyword in q for keyword in ("招生", "通告", "截止", "申請表", "deadline", "報名")):
+    if any(keyword in q for keyword in ("招生", "通告", "截止", "申請表", "申请表", "deadline", "報名", "报名")):
         return "admissions"
     if any(keyword in q for keyword in ("申請計劃", "準備", "面試", "文件", "timeline", "時間表")):
         return "plan"
@@ -812,7 +812,7 @@ def parse_parent_request_text(text: str | None) -> dict[str, Any]:
         filters["vacancyGrade"] = f"S{grade_match.group(1)}"
         signals["grade"] = f"S{grade_match.group(1)}"
 
-    if any(word in raw for word in ("學額", "学额", "學位", "学位", "插班", "有位")) or "vacancy" in lowered:
+    if any(word in raw for word in ("學額", "学额", "學位", "学位", "插班", "插班位", "空位", "餘額", "余额", "有位", "有无位")) or "vacancy" in lowered:
         parsed["intentHints"].append("vacancy")
         filters["hasVacancy"] = True
     if any(word in raw for word in ("招生", "通告", "截止", "申請", "申请", "報名", "报名")) or "deadline" in lowered:
