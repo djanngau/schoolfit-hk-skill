@@ -23,8 +23,8 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.0.9"
-SKILL_VERSION_HEADER_VERSION = "1.0.9"
+SKILL_VERSION = "1.0.10"
+SKILL_VERSION_HEADER_VERSION = "1.0.10"
 MAX_COMPARE_IDS = 4
 ROBUST_SEARCH_PAGE_SIZE = 1000
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
@@ -1206,6 +1206,23 @@ def quick_start_output(trace_id: TraceId) -> dict[str, Any]:
 
 def marketplace_demo_payload() -> dict[str, Any]:
     return {
+        "distributionPolicy": {
+            "primaryMarketplace": "ClawHub",
+            "fallbackOrder": ["ClawHub", "skills.sh", "GitHub"],
+            "installCommands": [
+                "openclaw skills install schoolfit-hk",
+                "clawhub install schoolfit-hk",
+                "/skill install clawhub:schoolfit-hk",
+                "ark skill install clawhub:schoolfit-hk",
+                "/skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk",
+                "ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk",
+            ],
+            "notes": [
+                "Use ClawHub first for OpenClaw-native discovery, versioning, moderation and inspect flows.",
+                "Use skills.sh as a secondary cross-agent index for GitHub-backed SKILL.md discovery.",
+                "Use GitHub direct install only when registry lookup is unavailable or an exact repository path is required.",
+            ],
+        },
         "examples": [
             {
                 "title": "首次啟用",
@@ -1445,6 +1462,7 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
         return output
     if command == "marketplace-demo":
         output = {
+            "distributionPolicy": payload.get("distributionPolicy", {}),
             "examples": payload.get("examples", []),
             "commandMap": payload.get("commandMap", []),
             "notes": [

@@ -1,4 +1,4 @@
-# SchoolFit HK Skill for OpenClaw (v1.0.9)
+# SchoolFit HK Skill for OpenClaw (v1.0.10)
 
 OpenClaw / ArkAgent / Claude Code compatible skill for Hong Kong secondary-school selection using the public [SchoolFit HK](https://schoolfit.hk) API.
 
@@ -23,14 +23,24 @@ The skill wraps SchoolFit HK features for:
 
 ## Install
 
+Default marketplace: ClawHub. Use skills.sh only as a secondary cross-agent index, and direct GitHub install as the final fallback.
+
 From ClawHub:
 
 ```text
+openclaw skills install schoolfit-hk
+clawhub install schoolfit-hk
 /skill install clawhub:schoolfit-hk
 ark skill install clawhub:schoolfit-hk
 ```
 
 ClawHub listing: https://clawhub.ai/djanngau/schoolfit-hk
+
+From skills.sh discovery:
+
+```text
+npx skills add djanngau/schoolfit-hk-skill
+```
 
 From GitHub:
 
@@ -58,6 +68,14 @@ When the user pastes `sfhk_...`, the Agent keeps that code only in the active ch
 - Sends `X-SchoolFit-Skill-Code`, `X-SchoolFit-Skill-Version`, and trace metadata for activation and anonymous telemetry. The code is not a payment token or student identity.
 - Keeps official facts, third-party Band references, community summaries, vacancies, and admissions notices separate.
 - Blocks obvious HKID, phone, and email input before API calls, and asks the user to remove sensitive data.
+
+## Marketplace Policy
+
+- ClawHub is the preferred registry for OpenClaw-native discovery, install, inspect, versioning, moderation, and release checks.
+- The project should not label its default market as SkillHub or `skillhub`.
+- Fallback order is ClawHub, then skills.sh, then GitHub direct search/install.
+- skills.sh is useful for broader Agent ecosystem discovery, but its API is authenticated and GitHub-index oriented, so it should not replace ClawHub as the OpenClaw default.
+- GitHub direct install remains available for exact-path installs and source review.
 
 ## Local Smoke Test
 

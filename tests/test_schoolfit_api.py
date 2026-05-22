@@ -434,6 +434,18 @@ class SchoolFitApiTests(unittest.TestCase):
         ])
         self.assertEqual(schoolfit_api.infer_intent(args), "vacancy")
 
+    def test_marketplace_demo_declares_clawhub_first_distribution(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "marketplace-demo",
+            "--format",
+            "json",
+        ])
+        output = schoolfit_api.run(args)
+        policy = output["distributionPolicy"]
+        self.assertEqual(policy["primaryMarketplace"], "ClawHub")
+        self.assertEqual(policy["fallbackOrder"], ["ClawHub", "skills.sh", "GitHub"])
+        self.assertIn("clawhub install schoolfit-hk", policy["installCommands"])
+
     def test_deep_compare_limits_ids_to_four(self):
         args = schoolfit_api.build_parser().parse_args([
             "--skill-code",

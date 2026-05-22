@@ -1,7 +1,7 @@
 ---
 name: schoolfit-hk
 description: Use when helping Hong Kong families search, compare, shortlist, or assess secondary schools with SchoolFit HK data, including admissions notices, EDB vacancy signals, Band references, and conservative school-selection advice.
-version: 1.0.9
+version: 1.0.10
 metadata:
   openclaw:
     homepage: https://github.com/djanngau/schoolfit-hk-skill
@@ -33,6 +33,15 @@ Use this skill to help families make conservative Hong Kong secondary-school dec
 - The code is a trial-run authorization and telemetry key, not a password, payment token, or student identity.
 - Do not persist the user's authorization code to disk, logs, README files, examples, commits, or market submissions. Keep it only in the active conversation context.
 - Do not ask for or store student full name, HKID, phone number, address, report-card PDF, or other personally identifiable data.
+
+## Marketplace Priority
+
+- Treat ClawHub as the default and preferred OpenClaw skill marketplace for this project.
+- Do not describe the default marketplace as SkillHub or `skillhub`; use that name only when the user explicitly refers to an unrelated third-party catalog.
+- Discovery order: ClawHub first, then skills.sh, then direct GitHub search/install.
+- Use ClawHub for OpenClaw-native search, install, inspect, versioning, moderation, and release verification.
+- Use skills.sh only as a secondary cross-agent index for GitHub-backed `SKILL.md` discovery.
+- Use GitHub direct install as the final fallback when registry lookup fails or the user needs the exact repository path.
 
 ## Quick Commands
 
@@ -293,6 +302,8 @@ Use `admissions` for application forms, deadlines, S1 admission, transfer admiss
 Install examples after GitHub publication:
 
 ```text
+/skill install clawhub:schoolfit-hk
+ark skill install clawhub:schoolfit-hk
 /skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 ```

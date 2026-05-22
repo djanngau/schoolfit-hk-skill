@@ -12,6 +12,18 @@ https://github.com/djanngau/schoolfit-hk-skill
 
 https://clawhub.ai/djanngau/schoolfit-hk
 
+## Marketplace Priority
+
+Primary marketplace: ClawHub.
+
+Fallback order:
+
+1. ClawHub for OpenClaw-native discovery, install, inspect, versioning, moderation, and release verification.
+2. skills.sh for broader cross-agent/GitHub-indexed discovery.
+3. GitHub direct search or exact-path install.
+
+Do not describe the default SchoolFit HK skill marketplace as SkillHub or `skillhub`. If a UI or agent needs a generic label, use "Skill marketplace" while resolving this project through ClawHub first.
+
 ## Install Path
 
 ```text
@@ -46,8 +58,11 @@ education, hong-kong, school-selection, secondary-school, admissions, vacancies,
 ## Suggested Marketplace Commands
 
 ```text
+openclaw skills install schoolfit-hk
+clawhub install schoolfit-hk
 /skill install clawhub:schoolfit-hk
 ark skill install clawhub:schoolfit-hk
+npx skills add djanngau/schoolfit-hk-skill
 /skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 ```
@@ -56,7 +71,7 @@ ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 
 - Slug: `schoolfit-hk`
 - Owner: `djanngau`
-- Version: `1.0.9`
+- Version: `1.0.10`
 - Moderation: `CLEAN`
 
 ## Smoke Test
