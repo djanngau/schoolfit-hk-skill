@@ -23,7 +23,7 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.0.3"
+SKILL_VERSION = "1.0.4"
 MAX_COMPARE_IDS = 4
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
 TIMEOUT_SECONDS = 15
@@ -537,6 +537,7 @@ SCHOOL_NAME_ALIASES = {
     "spcc": "St. Paul's Co-educational College",
     "spc": "St. Paul's College",
     "spcs": "St. Paul's Convent School",
+    "spcssection": "St. Paul's Convent School",
     "dgs": "Diocesan Girls' School",
     "dbs": "Diocesan Boys' School",
     "ywgs": "Ying Wa Girls' School",
@@ -545,6 +546,74 @@ SCHOOL_NAME_ALIASES = {
     "bps": "Belilios Public School",
     "mcs": "Maryknoll Convent School",
     "smcc": "St. Mary's Canossian College",
+    "hy": "Heep Yunn School",
+    "hys": "Heep Yunn School",
+    "hyschool": "Heep Yunn School",
+    "ghs": "Good Hope School",
+    "gh": "Good Hope School",
+    "lgc": "La Salle College",
+    "lsc": "La Salle College",
+    "kc": "King's College",
+    "wyhk": "Wah Yan College Hong Kong",
+    "wyk": "Wah Yan College Kowloon",
+    "sjc": "St. Joseph's College",
+    "sjc hk": "St. Joseph's College",
+    "sfxc": "St. Francis Xavier's College",
+    "sfx": "St. Francis Xavier's College",
+    "stmark": "St. Mark's School",
+    "stmarks": "St. Mark's School",
+    "ststephen": "St. Stephen's College",
+    "ssc": "St. Stephen's College",
+    "ststephengirls": "St. Stephen's Girls' College",
+    "ssgc": "St. Stephen's Girls' College",
+    "bhs": "Baptist Lui Ming Choi Secondary School",
+    "blmcss": "Baptist Lui Ming Choi Secondary School",
+    "lmc": "Baptist Lui Ming Choi Secondary School",
+    "skhtst": "SKH Tsang Shiu Tim Secondary School",
+    "tstss": "SKH Tsang Shiu Tim Secondary School",
+    "ktss": "Kwok Tak Seng Catholic Secondary School",
+    "kts": "Kwok Tak Seng Catholic Secondary School",
+    "stmc": "Sha Tin Methodist College",
+    "stm": "Sha Tin Methodist College",
+    "stgss": "Sha Tin Government Secondary School",
+    "spcsc": "St. Paul's College",
+    "ccsc": "Cheung Chuk Shan College",
+    "ccscs": "Cheung Chuk Shan College",
+    "twgss": "True Light Girls' College",
+    "tlgc": "True Light Girls' College",
+    "ktls": "Kowloon True Light School",
+    "hfcc": "Holy Family Canossian College",
+    "mss": "Munsang College",
+    "msc": "Munsang College",
+    "qes": "Queen Elizabeth School",
+    "qesosa": "Queen Elizabeth School Old Students' Association Secondary School",
+    "csk": "Chan Sui Ki (La Salle) College",
+    "csklsc": "Chan Sui Ki (La Salle) College",
+    "plkno1": "Po Leung Kuk No.1 W.H. Cheung College",
+    "plkwhc": "Po Leung Kuk No.1 W.H. Cheung College",
+    "npl": "Ning Po College",
+    "plkcfs": "Po Leung Kuk Choi Kai Yau School",
+}
+
+NEARBY_DISTRICTS = {
+    "沙田區": {"大埔區", "西貢區", "九龍城區", "黃大仙區", "葵青區"},
+    "大埔區": {"沙田區", "北區", "元朗區"},
+    "西貢區": {"觀塘區", "黃大仙區", "沙田區"},
+    "九龍城區": {"油尖旺區", "黃大仙區", "觀塘區", "深水埗區", "沙田區"},
+    "油尖旺區": {"九龍城區", "深水埗區", "灣仔區", "中西區"},
+    "深水埗區": {"油尖旺區", "九龍城區", "葵青區", "荃灣區"},
+    "黃大仙區": {"九龍城區", "觀塘區", "西貢區", "沙田區"},
+    "觀塘區": {"黃大仙區", "西貢區", "九龍城區", "東區"},
+    "葵青區": {"荃灣區", "深水埗區", "沙田區"},
+    "荃灣區": {"葵青區", "屯門區", "元朗區", "深水埗區"},
+    "屯門區": {"元朗區", "荃灣區"},
+    "元朗區": {"屯門區", "北區", "大埔區", "荃灣區"},
+    "北區": {"大埔區", "元朗區"},
+    "中西區": {"灣仔區", "南區", "油尖旺區"},
+    "灣仔區": {"中西區", "東區", "油尖旺區"},
+    "東區": {"灣仔區", "南區", "觀塘區"},
+    "南區": {"中西區", "灣仔區", "東區"},
+    "離島區": {"中西區", "荃灣區"},
 }
 
 
@@ -745,6 +814,87 @@ def resolve_school_query(name: str) -> str:
     return SCHOOL_NAME_ALIASES.get(normalized, name)
 
 
+def district_relation(target: str | None, school_district: str | None) -> str:
+    if not target or not school_district:
+        return "unknown"
+    if target == school_district:
+        return "same"
+    if school_district in NEARBY_DISTRICTS.get(target, set()):
+        return "nearby"
+    return "other"
+
+
+def medium_fit(language_priority: str | None, school_medium: str | None) -> str:
+    if not language_priority:
+        return "neutral"
+    medium = school_medium or ""
+    if not medium:
+        return "unknown"
+    if "英文" in language_priority:
+        if medium == "英文":
+            return "strong"
+        if "中英" in medium:
+            return "partial"
+        return "weak"
+    if "中文" in language_priority:
+        if medium == "中文":
+            return "strong"
+        if "中英" in medium:
+            return "partial"
+        return "weak"
+    return "neutral"
+
+
+def shortlist_score(school: dict[str, Any], signals: dict[str, Any]) -> tuple[int, list[str], list[str]]:
+    score = 0
+    reasons: list[str] = []
+    risks: list[str] = []
+    target_district = signals.get("district")
+    relation = district_relation(target_district, school.get("district"))
+    if relation == "same":
+        score += 30
+        reasons.append("目標地區內")
+    elif relation == "nearby":
+        score += 12
+        reasons.append("鄰近目標地區，可作通勤備選")
+    elif target_district:
+        score -= 10
+        risks.append("不在目標或鄰近地區，通勤需再核實")
+
+    fit = medium_fit(signals.get("languagePriority") or signals.get("medium"), school.get("mediumOfInstruction"))
+    if fit == "strong":
+        score += 28
+        reasons.append("符合英文環境偏好")
+    elif fit == "partial":
+        score += 8
+        risks.append("中英並重，若要嚴格英文環境需再確認英文科目比例")
+    elif fit == "weak":
+        score -= 35
+        risks.append("授課語言不符合英文環境偏好")
+    elif fit == "unknown":
+        risks.append("授課語言資料不足，需確認是否符合英文環境偏好")
+
+    band = str(school.get("bandingReference") or "")
+    target_band = str(signals.get("banding") or "")
+    if target_band and target_band in band:
+        score += 22
+        reasons.append("Band 參考匹配")
+    elif "Band 1" in band:
+        score += 14
+        reasons.append("Band 1 參考")
+    elif band:
+        score += 4
+
+    if school.get("fundingType") == "資助":
+        score += 5
+    if school.get("fundingType") == "官立":
+        score += 4
+    if school.get("fundingType") == "直資" and signals.get("acceptsDss") is False:
+        score -= 100
+        risks.append("家長表示不接受直資")
+    return score, reasons, risks
+
+
 def apply_parsed_request_to_args(args: argparse.Namespace) -> None:
     parsed = parse_parent_request_text(getattr(args, "q", None))
     params = parsed.get("suggestedCommandParams", {}).get("advisor-search", {})
@@ -897,7 +1047,7 @@ def self_check_output() -> dict[str, Any]:
         script = handle.read()
     chat_path = "/api/" + "agent/chat"
     script_checks = [
-        ("version_1_0_3", f'SKILL_VERSION = "{SKILL_VERSION}"' in script),
+        ("version_1_0_4", f'SKILL_VERSION = "{SKILL_VERSION}"' in script),
         ("host_allowlist", "ALLOWED_HOSTS = {\"schoolfit.hk\"}" in script),
         ("activation_page", ACTIVATION_PAGE_URL in script),
         ("pii_guard", "detect_sensitive_input" in script),
@@ -1297,28 +1447,43 @@ def compact_shortlist(payload: dict[str, Any]) -> dict[str, Any]:
         "備選": [],
         "暫不建議": [],
     }
-    for index, school in enumerate(schools[:12]):
+    scored_schools = []
+    for index, school in enumerate(schools[:24]):
+        score, fit_reasons, fit_risks = shortlist_score(school, parsed_signals)
+        scored_schools.append((score, index, school, fit_reasons, fit_risks))
+    scored_schools.sort(key=lambda item: (-item[0], item[1]))
+
+    for rank, (score, _index, school, fit_reasons, fit_risks) in enumerate(scored_schools[:12]):
         band = str(school.get("bandingReference") or "")
         vacancy = school.get("vacancySummary") or {}
         item = {
             "school": school,
-            "rankingRationale": school.get("rankingRationale") or build_ranking_rationale(school),
+            "fitScore": score,
+            "rankingRationale": list(dict.fromkeys(fit_reasons + (school.get("rankingRationale") or build_ranking_rationale(school))))[:6],
             "confirmBeforeApplying": [
                 "核實最新招生通告與截止日。",
                 "確認 Band 參考是否仍適合孩子近期香港校內成績。",
             ],
         }
+        if fit_risks:
+            item["fitRisks"] = list(dict.fromkeys(fit_risks))
         if accepts_dss is False and school.get("fundingType") == "直資":
             buckets["暫不建議"].append({
                 **item,
                 "risk": "家長表示不接受直資，這間屬直資學校，除非改變學費/直資偏好，否則不建議放入主名單。",
             })
             continue
-        if index < 3 and ("Band 1" in band or vacancy.get("hasAnyVacancy") is True):
+        if medium_fit(parsed_signals.get("languagePriority") or parsed_signals.get("medium"), school.get("mediumOfInstruction")) == "weak":
+            buckets["暫不建議"].append({
+                **item,
+                "risk": "家長偏好英文環境，這間授課語言不匹配，先降級處理。",
+            })
+            continue
+        if rank < 3 and ("Band 1" in band or vacancy.get("hasAnyVacancy") is True or score >= 50):
             buckets["首選"].append(item)
-        elif index < 6:
+        elif rank < 6:
             buckets["穩陣"].append(item)
-        elif index < 10:
+        elif rank < 10:
             buckets["備選"].append(item)
         else:
             buckets["暫不建議"].append({**item, "risk": "目前匹配訊號較少，先作資料備查。"})
@@ -1330,6 +1495,11 @@ def compact_shortlist(payload: dict[str, Any]) -> dict[str, Any]:
         "missingInfoQuestions": payload.get("missingInfoQuestions", []),
         "conversationHints": payload.get("conversationHints", []),
         "preferenceWarnings": build_shortlist_preference_warnings(payload, buckets),
+        "rankingPolicy": [
+            "同區優先，其次鄰近地區；跨區會降權。",
+            "偏好英文環境時，英文授課優先，中英並重只作部分匹配，中文授課會降到暫不建議。",
+            "Band、資助類型和用戶明確偏好會影響分桶，但不是錄取機率。"
+        ],
         "nextActions": [
             "先從首選和穩陣各挑 2-3 間，到 SchoolFit HK 詳情頁確認。",
             "再按通勤、學費、語言、校風和最新招生/學額訊號縮短名單。",
@@ -1359,6 +1529,14 @@ def build_shortlist_preference_warnings(payload: dict[str, Any], buckets: dict[s
     signals = payload.get("parsedSignals") or {}
     if signals.get("acceptsDss") is False and buckets.get("暫不建議"):
         warnings.append("已按家長不接受直資的偏好，把直資學校移到暫不建議。")
+    language = signals.get("languagePriority") or signals.get("medium")
+    if language and "英文" in str(language):
+        downgraded = [
+            item for item in buckets.get("暫不建議", [])
+            if any("授課語言不符合英文環境偏好" in risk for risk in item.get("fitRisks", []))
+        ]
+        if downgraded:
+            warnings.append("已按英文環境偏好，把中文授課學校降到暫不建議；中英並重只視作部分匹配。")
     return warnings
 
 
@@ -1717,6 +1895,8 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
                 print(f"  - {school.get('schoolfitUrl')}")
                 for reason in item.get("rankingRationale", [])[:3]:
                     print(f"  - {reason}")
+                for risk in item.get("fitRisks", [])[:2]:
+                    print(f"  - 風險: {risk}")
         if data.get("missingInfoQuestions"):
             print("\n### 可補充資料")
             for question in data.get("missingInfoQuestions", []):
@@ -1725,6 +1905,10 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
             print("\n### 偏好提示")
             for warning in data.get("preferenceWarnings", []):
                 print(f"- {warning}")
+        if data.get("rankingPolicy"):
+            print("\n### 分桶規則")
+            for policy in data.get("rankingPolicy", []):
+                print(f"- {policy}")
         print_caveats()
         return
     if command == "search-schools":

@@ -388,7 +388,7 @@ class SchoolFitApiTests(unittest.TestCase):
             "沙田 Band 1 英文 男女校",
         ])
         empty = {"search": {"count": 0, "schools": []}}
-        fallback = {"count": 1, "schools": [{"slug": "demo-a", "nameZh": "示例甲", "banding": "Band 1"}]}
+        fallback = {"count": 1, "schools": [{"slug": "demo-a", "nameZh": "示例甲", "mediumOfInstruction": "英文", "banding": "Band 1"}]}
         with mock.patch.object(schoolfit_api, "request_json", side_effect=[empty, fallback]) as request:
             output = schoolfit_api.run(args)
         self.assertEqual(request.call_count, 2)
@@ -408,8 +408,8 @@ class SchoolFitApiTests(unittest.TestCase):
             "search": {
                 "count": 2,
                 "schools": [
-                    {"slug": "dss-school", "nameZh": "直資中學", "fundingType": "直資", "banding": "Band 1A"},
-                    {"slug": "aided-school", "nameZh": "資助中學", "fundingType": "資助", "banding": "Band 1B"},
+                    {"slug": "dss-school", "nameZh": "直資中學", "fundingType": "直資", "mediumOfInstruction": "英文", "banding": "Band 1A"},
+                    {"slug": "aided-school", "nameZh": "資助中學", "fundingType": "資助", "mediumOfInstruction": "英文", "banding": "Band 1B"},
                 ],
             }
         }
@@ -418,6 +418,57 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertEqual(output["buckets"]["暫不建議"][0]["school"]["slug"], "dss-school")
         self.assertEqual(output["buckets"]["首選"][0]["school"]["slug"], "aided-school")
         self.assertTrue(output["preferenceWarnings"])
+
+    def test_shortlist_builder_downgrades_chinese_medium_when_english_environment_requested(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "shortlist-builder",
+            "--q",
+            "九龍城 Band 1 女校 英文環境",
+        ])
+        payload = {
+            "search": {
+                "count": 2,
+                "schools": [
+                    {"slug": "chinese-school", "nameZh": "中文中學", "district": "九龍城區", "mediumOfInstruction": "中文", "banding": "Band 1A"},
+                    {"slug": "english-school", "nameZh": "英文中學", "district": "九龍城區", "mediumOfInstruction": "英文", "banding": "Band 1B"},
+                ],
+            }
+        }
+        with mock.patch.object(schoolfit_api, "request_json", return_value=payload):
+            output = schoolfit_api.run(args)
+        self.assertEqual(output["buckets"]["首選"][0]["school"]["slug"], "english-school")
+        self.assertEqual(output["buckets"]["暫不建議"][0]["school"]["slug"], "chinese-school")
+        self.assertIn("授課語言不符合英文環境偏好", output["buckets"]["暫不建議"][0]["fitRisks"][0])
+
+    def test_shortlist_builder_prefers_same_district_over_nearby(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "shortlist-builder",
+            "--q",
+            "沙田 Band 1 英文 男女校",
+        ])
+        payload = {
+            "search": {
+                "count": 2,
+                "schools": [
+                    {"slug": "nearby-school", "nameZh": "鄰近中學", "district": "九龍城區", "mediumOfInstruction": "英文", "banding": "Band 1A"},
+                    {"slug": "same-district-school", "nameZh": "同區中學", "district": "沙田區", "mediumOfInstruction": "英文", "banding": "Band 1B"},
+                ],
+            }
+        }
+        with mock.patch.object(schoolfit_api, "request_json", return_value=payload):
+            output = schoolfit_api.run(args)
+        self.assertEqual(output["buckets"]["首選"][0]["school"]["slug"], "same-district-school")
+        self.assertIn("目標地區內", output["buckets"]["首選"][0]["rankingRationale"])
+
+    def test_more_school_aliases_resolve_to_full_names(self):
+        self.assertEqual(schoolfit_api.resolve_school_query("DGS"), "Diocesan Girls' School")
+        self.assertEqual(schoolfit_api.resolve_school_query("HYS"), "Heep Yunn School")
+        self.assertEqual(schoolfit_api.resolve_school_query("LSC"), "La Salle College")
+        self.assertEqual(schoolfit_api.resolve_school_query("WYHK"), "Wah Yan College Hong Kong")
 
     def test_self_check_is_public_and_ok(self):
         args = schoolfit_api.build_parser().parse_args(["self-check"])

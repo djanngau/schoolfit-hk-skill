@@ -1,7 +1,7 @@
 ---
 name: schoolfit-hk
 description: Use when helping Hong Kong families search, compare, shortlist, or assess secondary schools with SchoolFit HK data, including admissions notices, EDB vacancy signals, Band references, and conservative school-selection advice.
-version: 1.0.3
+version: 1.0.4
 metadata: {"openclaw":{"homepage":"https://github.com/djanngau/schoolfit-hk-skill","skillKey":"schoolfit-hk","default_enabled":true,"requires":{"bins":["python3"]},"envVars":[{"name":"SCHOOLFIT_BASE_URL","required":false,"description":"Optional SchoolFit HK base URL. Must remain https://schoolfit.hk."}]}}
 ---
 
@@ -161,6 +161,8 @@ When presenting results:
 - If the request is too broad, ask at most three missing-info questions: district/commute, Band reference, and DSS/tuition preference.
 - When `rankingRationale` is returned, use it to explain why schools were placed higher; do not imply it is an official ranking.
 - If the user rejects DSS/直資, do not place DSS schools in `首選`, `穩陣`, or `備選`; keep them in `暫不建議` with a clear preference warning.
+- If the user requests 英文環境, English-medium schools should rank above 中英並重, and Chinese-medium schools should be downgraded to `暫不建議` unless the user later relaxes the language preference.
+- Prefer same-district schools first, then nearby districts; cross-district schools need a commute caveat.
 
 ## Supported Workflows
 
@@ -208,7 +210,7 @@ The final response should read like a human advisor answer: 3-6 prioritized scho
 
 ### Shortlist Builder
 
-Use `shortlist-builder` when the user asks for "首選/穩陣/備選", "幫我排一排", "shortlist", or wants a practical family list. It groups returned schools into `首選`, `穩陣`, `備選`, and `暫不建議`. These are decision-support buckets, not admissions predictions.
+Use `shortlist-builder` when the user asks for "首選/穩陣/備選", "幫我排一排", "shortlist", or wants a practical family list. It groups returned schools into `首選`, `穩陣`, `備選`, and `暫不建議`. It considers district/nearby district, English-environment preference, Band reference and DSS preference. These are decision-support buckets, not admissions predictions.
 
 ### School Detail
 
@@ -216,7 +218,7 @@ Use `school-detail` when the user names one school or provides a SchoolFit slug.
 
 ### Resolve School
 
-Use `resolve-school` when the user gives a fuzzy school name, acronym, English shorthand, or Chinese partial name. Return candidates and ask for confirmation if the match is ambiguous.
+Use `resolve-school` when the user gives a fuzzy school name, acronym, English shorthand, or Chinese partial name. Common aliases such as SPCC, DGS, DBS, HYS, LSC, WYHK, WYK, SJC, MCS, SMCC, YWGS and YWC should be expanded before API search. Return candidates and ask for confirmation if the match is ambiguous.
 
 ### Compare
 
