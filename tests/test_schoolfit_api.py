@@ -327,6 +327,89 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertTrue(output["llmBrief"]["factsOnly"])
         self.assertIn("doNotInvent", output["llmBrief"])
 
+    def test_resolve_school_searches_by_name(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "resolve-school",
+            "--name",
+            "SPCC",
+        ])
+        with mock.patch.object(schoolfit_api, "request_json", return_value={
+            "count": 1,
+            "schools": [{"slug": "st-pauls-co-educational-college", "nameEn": "St. Paul's Co-educational College"}],
+        }) as request:
+            output = schoolfit_api.run(args)
+        self.assertEqual(request.call_args.args[2], "/api/schools")
+        self.assertEqual(request.call_args.kwargs["params"]["q"], "St. Paul's Co-educational College")
+        self.assertEqual(output["candidates"][0]["slug"], "st-pauls-co-educational-college")
+
+    def test_shortlist_builder_buckets_results(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "shortlist-builder",
+            "--q",
+            "沙田 Band 1 英文 男女校",
+        ])
+        payload = {
+            "search": {
+                "count": 2,
+                "schools": [
+                    {
+                        "slug": "demo-a",
+                        "nameZh": "示例甲",
+                        "district": "沙田區",
+                        "mediumOfInstruction": "英文",
+                        "banding": "Band 1A",
+                    },
+                    {
+                        "slug": "demo-b",
+                        "nameZh": "示例乙",
+                        "district": "沙田區",
+                        "mediumOfInstruction": "英文",
+                        "banding": "Band 2",
+                    },
+                ],
+            }
+        }
+        with mock.patch.object(schoolfit_api, "request_json", return_value=payload) as request:
+            output = schoolfit_api.run(args)
+        self.assertEqual(request.call_args.args[2], "/api/skill/search-advisor")
+        self.assertEqual(output["buckets"]["首選"][0]["school"]["slug"], "demo-a")
+        self.assertIn("rankingRationale", output["buckets"]["首選"][0])
+
+    def test_shortlist_builder_uses_fallback_when_advisor_search_empty(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "shortlist-builder",
+            "--q",
+            "沙田 Band 1 英文 男女校",
+        ])
+        empty = {"search": {"count": 0, "schools": []}}
+        fallback = {"count": 1, "schools": [{"slug": "demo-a", "nameZh": "示例甲", "banding": "Band 1"}]}
+        with mock.patch.object(schoolfit_api, "request_json", side_effect=[empty, fallback]) as request:
+            output = schoolfit_api.run(args)
+        self.assertEqual(request.call_count, 2)
+        self.assertEqual(request.call_args.args[2], "/api/schools")
+        self.assertIsNone(request.call_args.kwargs["params"]["q"])
+        self.assertEqual(output["buckets"]["首選"][0]["school"]["slug"], "demo-a")
+
+    def test_self_check_is_public_and_ok(self):
+        args = schoolfit_api.build_parser().parse_args(["self-check"])
+        with mock.patch.object(schoolfit_api, "request_json") as request:
+            output = schoolfit_api.run(args)
+        self.assertFalse(request.called)
+        self.assertTrue(output["ok"])
+        self.assertEqual(output["skillVersion"], schoolfit_api.SKILL_VERSION)
+
+    def test_parse_parent_request_returns_missing_questions_and_conversation_hint(self):
+        output = schoolfit_api.parse_parent_request_text("上次條件只看女校，唔想太谷，近地鐵")
+        self.assertIn("continue_previous_filters", output["conversationHints"])
+        self.assertIn("校風", output["recommendationSignals"]["priorities"])
+        self.assertTrue(output["missingInfoQuestions"])
+
 
 if __name__ == "__main__":
     unittest.main()

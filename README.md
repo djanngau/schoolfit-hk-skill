@@ -1,4 +1,4 @@
-# SchoolFit HK Skill for OpenClaw (v1.0.1)
+# SchoolFit HK Skill for OpenClaw (v1.0.2)
 
 OpenClaw/CowAgent/Claude Code compatible skill for Hong Kong secondary-school selection using the public [SchoolFit HK](https://schoolfit.hk) API.
 
@@ -14,6 +14,9 @@ The skill wraps SchoolFit HK features for:
 - single-school decision reports
 - practical application planning output
 - application plan with deadline reminders and parent checklist
+- fuzzy school-name resolution
+- shortlist buckets for 首選 / 穩陣 / 備選 / 暫不建議
+- local package self-check
 - conservative source labeling and decision caveats
 
 ## Install
@@ -60,7 +63,10 @@ When the user pastes `sfhk_...`, the Agent keeps that code only in the active ch
 export SCHOOLFIT_SKILL_CODE="PASTE_CODE_FROM_https://schoolfit.hk/skill-code"
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py quick-start --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py parse-parent-request --q "九龍城 Band 1 女校 英文環境 唔要直資 想穩陣" --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py self-check --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py search-schools --q "沙田 Band 1 英文 男女校" --page-size 5 --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py resolve-school --name "SPCC" --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py shortlist-builder --q "沙田 Band 1 英文 男女校，想穩陣" --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --q "沙田 Band 1 英文 男女校" --district "沙田區" --banding "Band 1" --page-size 5 --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py deep-compare sha-tin-methodist-college,ying-wa-girls-school --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py vacancies --grade S1 --has-vacancy true --page-size 5 --format markdown

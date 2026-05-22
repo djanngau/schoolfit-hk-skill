@@ -1,7 +1,7 @@
 ---
 name: schoolfit-hk
 description: Use when helping Hong Kong families search, compare, shortlist, or assess secondary schools with SchoolFit HK data, including admissions notices, EDB vacancy signals, Band references, and conservative school-selection advice.
-version: 1.0.1
+version: 1.0.2
 metadata: {"openclaw":{"homepage":"https://github.com/djanngau/schoolfit-hk-skill","skillKey":"schoolfit-hk","default_enabled":true,"requires":{"bins":["python3"]},"envVars":[{"name":"SCHOOLFIT_BASE_URL","required":false,"description":"Optional SchoolFit HK base URL. Must remain https://schoolfit.hk."}]}}
 ---
 
@@ -45,6 +45,24 @@ Before calling the API, agents may parse a parent prompt locally:
 
 ```bash
 python3 <base_dir>/scripts/schoolfit_api.py parse-parent-request --q "九龍城 Band 1 女校 英文環境 唔要直資 想穩陣" --format markdown
+```
+
+Resolve fuzzy school names or acronyms before detail/report calls:
+
+```bash
+python3 <base_dir>/scripts/schoolfit_api.py resolve-school --skill-code "PASTE_CODE" --name "SPCC" --format markdown
+```
+
+Build a parent-friendly shortlist:
+
+```bash
+python3 <base_dir>/scripts/schoolfit_api.py shortlist-builder --skill-code "PASTE_CODE" --q "沙田 Band 1 英文 男女校，想穩陣，近地鐵" --format markdown
+```
+
+Run local package checks before publishing:
+
+```bash
+python3 <base_dir>/scripts/schoolfit_api.py self-check --format markdown
 ```
 
 Search schools:
@@ -139,6 +157,9 @@ When presenting results:
 - For admission notices, include source/fetched time, notice URL, active status, confidence, deadline if present, and remind families to check the original notice.
 - If data is missing, say `暫無可靠資料`; do not invent facts.
 - If the user includes phone, HKID, email, address, full name, or document content, stop and ask them to remove sensitive data before running SchoolFit API calls.
+- If the user says "上次", "剛才", "只看女校", "改成九龍城", or similar follow-up wording, preserve previous non-sensitive filters in the chat context and only override the changed field.
+- If the request is too broad, ask at most three missing-info questions: district/commute, Band reference, and DSS/tuition preference.
+- When `rankingRationale` is returned, use it to explain why schools were placed higher; do not imply it is an official ranking.
 
 ## Supported Workflows
 
@@ -184,9 +205,17 @@ It returns:
 
 The final response should read like a human advisor answer: 3-6 prioritized schools, one reason each, SchoolFit HK links, caveats, and next steps.
 
+### Shortlist Builder
+
+Use `shortlist-builder` when the user asks for "首選/穩陣/備選", "幫我排一排", "shortlist", or wants a practical family list. It groups returned schools into `首選`, `穩陣`, `備選`, and `暫不建議`. These are decision-support buckets, not admissions predictions.
+
 ### School Detail
 
 Use `school-detail` when the user names one school or provides a SchoolFit slug. If the user only gives a Chinese or English name, search first, then call detail on the best slug.
+
+### Resolve School
+
+Use `resolve-school` when the user gives a fuzzy school name, acronym, English shorthand, or Chinese partial name. Return candidates and ask for confirmation if the match is ambiguous.
 
 ### Compare
 
@@ -212,7 +241,11 @@ Use `activate` when the user pastes a message containing `sfhk_...`. After succe
 
 ### Parse Parent Request
 
-Use `parse-parent-request` before API calls when the user writes a long mixed-language prompt. It extracts district, Band reference, gender, medium, funding type, grade, vacancy/admission intent, DSS preference, risk preference, tuition and priorities without calling the API.
+Use `parse-parent-request` before API calls when the user writes a long mixed-language prompt. It extracts district, Band reference, gender, medium, funding type, grade, vacancy/admission intent, DSS preference, risk preference, tuition and priorities without calling the API. It also returns `missingInfoQuestions` and `conversationHints` for follow-up turns.
+
+### Self Check
+
+Use `self-check` before release or marketplace submission. It runs local package checks and does not call the SchoolFit API.
 
 ### Recommendation
 
