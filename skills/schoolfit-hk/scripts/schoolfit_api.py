@@ -23,7 +23,7 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.0.4"
+SKILL_VERSION = "1.0.5"
 MAX_COMPARE_IDS = 4
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
 TIMEOUT_SECONDS = 15
@@ -1047,7 +1047,7 @@ def self_check_output() -> dict[str, Any]:
         script = handle.read()
     chat_path = "/api/" + "agent/chat"
     script_checks = [
-        ("version_1_0_4", f'SKILL_VERSION = "{SKILL_VERSION}"' in script),
+        ("version_1_0_5", f'SKILL_VERSION = "{SKILL_VERSION}"' in script),
         ("host_allowlist", "ALLOWED_HOSTS = {\"schoolfit.hk\"}" in script),
         ("activation_page", ACTIVATION_PAGE_URL in script),
         ("pii_guard", "detect_sensitive_input" in script),
