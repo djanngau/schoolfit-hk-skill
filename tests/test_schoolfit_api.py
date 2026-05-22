@@ -305,7 +305,7 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertEqual(data, {"ok": True})
         self.assertEqual(captured["headers"]["X-schoolfit-skill-code"], "sfhk_custom_code")
         self.assertEqual(captured["headers"]["X-schoolfit-skill-trace-id"], "sf_trace_1")
-        self.assertEqual(captured["headers"]["X-schoolfit-skill-version"], "1.0.1")
+        self.assertEqual(captured["headers"]["X-schoolfit-skill-version"], "1.0.8")
 
     def test_skill_code_can_appear_after_subcommand(self):
         args = schoolfit_api.build_parser().parse_args([
@@ -467,6 +467,8 @@ class SchoolFitApiTests(unittest.TestCase):
 
     def test_search_brief_compact_reduces_payload(self):
         args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
             "search-schools",
             "--q",
             "沙田",

@@ -23,7 +23,8 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.0.7"
+SKILL_VERSION = "1.0.8"
+SKILL_VERSION_HEADER_VERSION = "1.0.8"
 MAX_COMPARE_IDS = 4
 ROBUST_SEARCH_PAGE_SIZE = 1000
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
@@ -51,6 +52,10 @@ EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECAS
 PII_WARNING_MESSAGE = (
     "為保護學生私隱，請不要在 Skill 請求中提供學生全名、HKID、電話、住址、成績表 PDF 或其他可識別個人資料。"
 )
+SCHOOLFIT_SKILL_CONFIG_ENV = "SCHOOLFIT_SKILL_CODE"
+SCHOOLFIT_SKILL_LEGACY_CODE_ENV = "SCHOOLFIT_SKILL_API_CODE"
+SCHOOLFIT_SKILL_CONFIG_PATH_ENV = "SCHOOLFIT_SKILL_CONFIG"
+DEFAULT_SKILL_CONFIG_PATH = os.path.expanduser("~/.schoolfit-hk/skill.json")
 
 TraceId = str
 ActivationMode = str
@@ -91,6 +96,65 @@ def code_display(code: str | None) -> str:
     return f"{normalized[:4]}...{normalized[-4:]}"
 
 
+def load_saved_skill_code() -> str | None:
+    config_path = os.environ.get(SCHOOLFIT_SKILL_CONFIG_PATH_ENV, DEFAULT_SKILL_CONFIG_PATH)
+    try:
+        with open(config_path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except FileNotFoundError:
+        return None
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    code = data.get("code")
+    return str(code).strip() if isinstance(code, str) and code.strip() else None
+
+
+def save_skill_code(code: str) -> None:
+    config_path = os.environ.get(SCHOOLFIT_SKILL_CONFIG_PATH_ENV, DEFAULT_SKILL_CONFIG_PATH)
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    payload = {
+        "code": code.strip(),
+        "updatedAt": int(time.time()),
+    }
+    with open(config_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False)
+
+
+def mark_skill_code_activated(code: str, activation_status: ActivationMode = "active") -> None:
+    config_path = os.environ.get(SCHOOLFIT_SKILL_CONFIG_PATH_ENV, DEFAULT_SKILL_CONFIG_PATH)
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    payload = {
+        "code": code.strip(),
+        "activationStatus": activation_status,
+        "activatedAt": int(time.time()),
+    }
+    with open(config_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False)
+
+
+def resolve_skill_code(cli_code: str | None = None, *, allow_fallback: bool = True) -> str | None:
+    if cli_code and str(cli_code).strip():
+        return str(cli_code).strip()
+
+    env_code = os.environ.get(SCHOOLFIT_SKILL_CONFIG_ENV, "").strip()
+    if env_code:
+        return env_code
+
+    saved_code = load_saved_skill_code()
+    if saved_code:
+        return saved_code
+
+    legacy_code = os.environ.get(SCHOOLFIT_SKILL_LEGACY_CODE_ENV, "").strip()
+    if legacy_code:
+        return legacy_code
+
+    if allow_fallback:
+        return SCHOOLFIT_SKILL_CLIENT_CODE
+    return None
+
+
 def extract_skill_code_from_text(text: str | None) -> str | None:
     if not text:
         return None
@@ -98,12 +162,14 @@ def extract_skill_code_from_text(text: str | None) -> str | None:
     return match.group(0) if match else None
 
 
-def get_skill_code(args: argparse.Namespace) -> str | None:
+def get_skill_code(args: argparse.Namespace, *, allow_fallback: bool = True) -> str | None:
     explicit = getattr(args, "skill_code", None)
-    if isinstance(explicit, str) and explicit.strip():
-        return explicit.strip()
-    env_code = os.environ.get("SCHOOLFIT_SKILL_CODE", "").strip()
-    return env_code or None
+    if explicit and str(explicit).strip() == SCHOOLFIT_SKILL_CLIENT_CODE:
+        return SCHOOLFIT_SKILL_CLIENT_CODE
+    resolved = resolve_skill_code(explicit, allow_fallback=allow_fallback)
+    if resolved:
+        return resolved
+    return None
 
 
 def activation_required_output(command: str, trace_id: TraceId, code: str | None = None, reason: str = "missing_code") -> dict[str, Any]:
@@ -301,6 +367,7 @@ def request_json(
     skill_code: str | None = None,
     trace_id: TraceId | None = None,
     activation_status: ActivationMode = "reserved",
+    skill_version: str | None = None,
 ) -> Any:
     url = make_url(base_url, path, params)
     data = None
@@ -309,7 +376,7 @@ def request_json(
         "Accept": "application/json",
         "User-Agent": f"schoolfit-openclaw-skill/{SKILL_VERSION}",
         SKILL_CODE_HEADER: code,
-        SKILL_VERSION_HEADER: SKILL_VERSION,
+        SKILL_VERSION_HEADER: skill_version or SKILL_VERSION_HEADER_VERSION,
         SKILL_ACTIVATION_STATUS_HEADER: activation_status,
     }
     if trace_id:
@@ -341,6 +408,38 @@ def request_json(
     raise SchoolFitError(f"SchoolFit API request failed: {last_error}") from None
 
 
+def telemetry_payload(
+    command: str,
+    endpoint: str,
+    skill_code: str,
+    trace_id: str,
+    latency_ms: int,
+    status_code: int,
+    *,
+    activation_status: ActivationMode = "reserved",
+    error_code: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "eventName": SKILL_USAGE_EVENT,
+        "command": command,
+        "endpoint": endpoint,
+        "statusCode": status_code,
+        "errorCode": error_code,
+        "traceId": trace_id,
+        "skillCodeHashPrefix": code_hash_prefix(skill_code),
+        "payload": {
+            "skill_version": SKILL_VERSION,
+            "command": command,
+            "status": "success" if error_code is None else "failed",
+            "trace_id": trace_id,
+            "schoolfit_code_hash_prefix": code_hash_prefix(skill_code),
+            "activation_status": activation_status,
+            "latency_ms": latency_ms,
+            "error_code": error_code,
+        },
+    }
+
+
 def record_telemetry(
     base_url: str,
     *,
@@ -354,34 +453,25 @@ def record_telemetry(
 ) -> None:
     if not skill_code or skill_code == SCHOOLFIT_SKILL_CLIENT_CODE:
         return
-    event = {
-        "skill_version": SKILL_VERSION,
-        "command": command,
-        "status": status,
-        "trace_id": trace_id,
-        "schoolfit_code_hash_prefix": code_hash_prefix(skill_code),
-        "activation_status": activation_status,
-        "latency_ms": latency_ms,
-        "error_code": error_code,
-    }
 
     def send() -> None:
         try:
+            status_code = 200 if status == "success" else 500
+            payload = telemetry_payload(
+                command,
+                command,
+                skill_code,
+                trace_id,
+                latency_ms or 0,
+                status_code,
+                activation_status=activation_status,
+                error_code=error_code,
+            )
             request_json(
                 "POST",
                 base_url,
                 SKILL_TELEMETRY_ENDPOINT,
-                body={
-                    "events": [{
-                        "eventName": SKILL_USAGE_EVENT,
-                        "endpoint": command,
-                        "statusCode": 200 if status == "success" else 500,
-                        "errorCode": error_code,
-                        "traceId": trace_id,
-                        "skillCodeHashPrefix": code_hash_prefix(skill_code),
-                        "payload": event,
-                    }]
-                },
+                body={"events": [payload]},
                 skill_code=skill_code,
                 trace_id=trace_id,
                 activation_status=activation_status,
@@ -390,6 +480,41 @@ def record_telemetry(
             return
 
     threading.Thread(target=send, daemon=True).start()
+
+
+def post_telemetry(base_url: str, telemetry_context: dict[str, Any], skill_code: str) -> None:
+    status_code = int(telemetry_context.get("statusCode", 200))
+    command = telemetry_context.get("command") or telemetry_context.get("endpoint") or "unknown"
+    trace_id = telemetry_context.get("traceId") or ""
+    endpoint = telemetry_context.get("endpoint", "") or ""
+    latency_ms = telemetry_context.get("latencyMs") or telemetry_context.get("latency_ms") or 0
+
+    payload = {
+        "events": [
+            telemetry_payload(
+                command,
+                endpoint,
+                skill_code,
+                str(trace_id),
+                int(latency_ms) if isinstance(latency_ms, (int, float, str)) and str(latency_ms).strip().isdigit() else 0,
+                status_code=status_code,
+                activation_status="active",
+            )
+        ]
+    }
+
+    try:
+        request_json(
+            "POST",
+            base_url,
+            SKILL_TELEMETRY_ENDPOINT,
+            body=payload,
+            skill_code=skill_code,
+            trace_id=trace_id,
+            activation_status="active",
+        )
+    except Exception:
+        return
 
 
 def safe_http_error(exc: urllib.error.HTTPError) -> str:
@@ -897,9 +1022,23 @@ def should_run_robust_district_search(args: argparse.Namespace, payload: dict[st
         return False
     q = getattr(args, "q", None) or ""
     primary_count = len(payload.get("schools", []) if isinstance(payload, dict) else [])
+    command = getattr(args, "command", None)
+
+    if command == "search-schools":
+        if not (0 < primary_count < 20):
+            return False
+    elif command == "advisor-search":
+        if getattr(args, "routing_mode", "auto") != "auto":
+            return False
+        if not (0 <= primary_count < 20):
+            return False
+    else:
+        if not (0 <= primary_count < 20):
+            return False
+
     district_words = [alias for alias, value in DISTRICT_ALIASES.items() if value == district]
     q_mentions_district = any(word and word in q for word in district_words)
-    return q_mentions_district or primary_count < 20
+    return q_mentions_district or primary_count > 0
 
 
 def robust_school_search(api: Any, args: argparse.Namespace, *, reason: str = "district_fulltext_guard") -> dict[str, Any]:
@@ -1266,6 +1405,7 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
             "comparison": payload.get("comparison", {}),
             "count": payload.get("count", len(schools)),
             "schools": schools,
+            "details": payload.get("details", []),
             "sourceLedger": source_ledger,
             "notes": SOURCE_NOTES,
         }
@@ -1518,6 +1658,7 @@ def compact_advisor_search(payload: dict[str, Any]) -> dict[str, Any]:
         report_output = {
             "vacancies": normalize_vacancy_payload(report_payload.get("vacancies", {})),
             "admissions": normalize_admission_payload(report_payload.get("admissions", {})),
+            "audit": report_payload.get("audit"),
             "intent": intent,
         }
     output = {
@@ -2229,6 +2370,10 @@ def build_parser() -> argparse.ArgumentParser:
     advisor.add_argument("--no-recommend", action="store_true", help="Do not call the recommendation endpoint.")
     advisor.add_argument("--include-decision-brief", action="store_true", help="Deprecated: kept for forward-compatible clients.")
 
+    setup_code = sub.add_parser("setup-code", help="Save authorization code to config and activate it.")
+    add_output_options(setup_code)
+    setup_code.add_argument("--code", required=True, help="SchoolFit authorization code to store in config.")
+
     shortlist = sub.add_parser("shortlist-builder", help="Build parent-friendly shortlist buckets from a natural-language request.")
     add_output_options(shortlist)
     add_common_filters(shortlist)
@@ -2302,6 +2447,12 @@ def build_parser() -> argparse.ArgumentParser:
 def add_output_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--format", choices=["json", "markdown"], default=argparse.SUPPRESS)
     parser.add_argument("--skill-code", default=argparse.SUPPRESS, help="SchoolFit Skill activation code.")
+    parser.add_argument("--brief-level", choices=["full", "compact"], default="full")
+    parser.add_argument("--routing-mode", choices=["auto", "precision", "broad"], default="auto")
+    parser.add_argument("--fallback-empty", choices=["ignore", "broaden"], default="ignore")
+    parser.add_argument("--audit-data", dest="audit_data", action="store_true", default=None)
+    parser.add_argument("--no-audit-data", dest="audit_data", action="store_false")
+    parser.add_argument("--boarding", action="store_true", help="Hint that user is looking for boarding-capable schools.")
 
 
 def add_common_filters(parser: argparse.ArgumentParser) -> None:
@@ -2355,6 +2506,68 @@ def school_search_params(args: argparse.Namespace) -> dict[str, Any]:
         "page": args.page,
         "pageSize": args.page_size,
     }
+
+
+def advisory_search_params(args: argparse.Namespace) -> dict[str, Any]:
+    q = getattr(args, "q", None)
+    has_boarding = False
+    enriched_q = q
+    if isinstance(q, str):
+        normalized_q = q.lower()
+        if "boarding" in normalized_q or "寄宿" in q or "寄宿制" in q:
+            has_boarding = True
+            if "boarding" not in normalized_q:
+                enriched_q = f"{q} boarding"
+
+    if getattr(args, "boarding", False):
+        has_boarding = True
+        if isinstance(enriched_q, str) and "boarding" not in enriched_q.lower():
+            enriched_q = f"{enriched_q} boarding"
+
+    intent = getattr(args, "intent", "auto") or "auto"
+    resolved_intent = infer_intent(args) if intent == "auto" else intent
+    args.intent = resolved_intent
+
+    raw_audit = getattr(args, "audit_data", None)
+    audit_data = bool(raw_audit) if raw_audit is not None else resolved_intent in {"admissions", "vacancy"}
+
+    return {
+        **school_search_params(args),
+        "q": enriched_q,
+        "intent": resolved_intent,
+        "routingMode": getattr(args, "routing_mode", None) or "auto",
+        "priorities": args.priorities,
+        "supportNeeds": args.support_needs,
+        "applicationGoal": args.application_goal,
+        "languagePriority": args.language_priority,
+        "acceptsDss": args.accepts_dss,
+        "commuteMinutes": args.commute_minutes,
+        "personality": args.personality,
+        "notes": args.notes,
+        "noRecommend": getattr(args, "no_recommend", None),
+        "includeDecisionBrief": getattr(args, "include_decision_brief", None),
+        "hasBoarding": has_boarding,
+        "auditData": audit_data,
+    }
+
+
+def build_advisor_search_params(args: argparse.Namespace, *, routing_mode: str | None = None) -> dict[str, Any]:
+    params = advisory_search_params(args)
+    mode = (routing_mode or getattr(args, "routing_mode", "auto") or "auto").strip().lower()
+    if mode == "broad":
+        params["routingMode"] = "broad"
+        params["banding"] = None
+        params["fundingType"] = None
+        params["gender"] = None
+        params["vacancyGrade"] = None
+        params["pageSize"] = 48
+    elif mode == "precision":
+        params["routingMode"] = "precision"
+        params["pageSize"] = getattr(args, "page_size", None)
+    else:
+        params["routingMode"] = "auto"
+
+    return params
 
 
 def recommendation_body_from_args(args: argparse.Namespace) -> dict[str, Any]:
@@ -2435,7 +2648,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     base_url = validate_base_url(args.base_url)
     command = args.command
     trace_id = next_trace_id()
-    skill_code = get_skill_code(args)
+    # For explicit search without a user code, surface activation guidance and
+    # avoid a potentially noisy API probe on the public search entry point.
+    use_client_code_fallback = command != "search-schools"
+    skill_code = get_skill_code(args, allow_fallback=use_client_code_fallback)
     started_at = time.time()
 
     if command == "quick-start":
@@ -2471,6 +2687,25 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             error_code=None if output.get("activated") else "activation_failed",
         )
         return output
+
+    if command == "setup-code":
+        setup_code = getattr(args, "code", None)
+        if not setup_code:
+            raise SchoolFitError("setup-code requires --code.")
+        normalized_code = extract_skill_code_from_text(setup_code) or setup_code.strip()
+        save_skill_code(normalized_code)
+        activation_status = activate_skill_code(base_url, normalized_code, trace_id)
+        if activation_status == "active":
+            mark_skill_code_activated(normalized_code, activation_status)
+        config_path = os.environ.get(SCHOOLFIT_SKILL_CONFIG_PATH_ENV, DEFAULT_SKILL_CONFIG_PATH)
+        return {
+            "configPath": config_path,
+            "activationStatus": activation_status,
+            "activationResult": activation_result_output(normalized_code, activation_status, trace_id),
+            "skillVersion": SKILL_VERSION,
+            "traceId": trace_id,
+            "command": "setup-code",
+        }
 
     sensitive_findings = detect_sensitive_input(args)
     if sensitive_findings:
@@ -2552,20 +2787,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 payload["search"] = fallback
                 payload["fallbackUsed"] = "structured_filter_search"
     elif command == "advisor-search":
-        payload = api("GET", "/api/skill/search-advisor", params={
-            **school_search_params(args),
-            "intent": (args.intent or "auto"),
-            "priorities": args.priorities,
-            "supportNeeds": args.support_needs,
-            "applicationGoal": args.application_goal,
-            "languagePriority": args.language_priority,
-            "acceptsDss": args.accepts_dss,
-            "commuteMinutes": args.commute_minutes,
-            "personality": args.personality,
-            "notes": args.notes,
-            "noRecommend": getattr(args, "no_recommend", None),
-            "includeDecisionBrief": getattr(args, "include_decision_brief", None),
-        })
+        payload = api("GET", "/api/skill/search-advisor", params=build_advisor_search_params(args))
+        if isinstance(payload, dict) and args.fallback_empty == "broaden":
+            search_payload = payload.get("search") if isinstance(payload.get("search"), dict) else {}
+            if int((search_payload or {}).get("count", 0) or 0) == 0:
+                payload = api("GET", "/api/skill/search-advisor", params=build_advisor_search_params(args, routing_mode="broad"))
         if isinstance(payload, dict):
             search_payload = payload.get("search") if isinstance(payload.get("search"), dict) else {}
             if should_run_robust_district_search(args, search_payload):
@@ -2590,11 +2816,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         compare_payload = api("GET", "/api/compare", params={"ids": ids})
         details: list[Any] = []
         if getattr(args, "include_detail", False):
+            unique_ids: list[str] = []
             for school_id in ids:
+                if school_id not in unique_ids:
+                    unique_ids.append(school_id)
+            detail_map: dict[str, Any] = {}
+            for school_id in unique_ids:
                 try:
-                    details.append(api("GET", f"/api/schools/{urllib.parse.quote(school_id, safe='')}"))
+                    detail_map[school_id] = api("GET", f"/api/schools/{urllib.parse.quote(school_id, safe='')}")
                 except SchoolFitError:
                     continue
+            for school_id in ids:
+                details.append(detail_map.get(school_id, {}))
         payload = {
             "compare": compare_payload,
             "count": len(compare_payload.get("schools", []) if isinstance(compare_payload, dict) else ids),
@@ -2673,6 +2906,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         trace_id=trace_id,
         code=skill_code,
     )
+    if command == "search-schools" and getattr(args, "brief_level", "full") == "compact":
+        output["schools"] = (output.get("schools") or [])[:8]
     record_telemetry(
         base_url,
         command=command,
