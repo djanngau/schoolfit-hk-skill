@@ -1,5 +1,6 @@
 import importlib.util
 import pathlib
+import tempfile
 import unittest
 from unittest import mock
 
@@ -140,6 +141,120 @@ class SchoolFitApiTests(unittest.TestCase):
             data = schoolfit_api.request_json("GET", "https://schoolfit.hk", "/api/schools")
         self.assertEqual(data, {"ok": True})
         self.assertEqual(captured["headers"]["X-schoolfit-skill-code"], "schoolfit-openclaw-v1-reserved")
+
+    def test_custom_skill_code_header_is_sent(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def read(self):
+                return b'{"ok": true}'
+
+        captured = {}
+
+        def fake_urlopen(req, timeout):
+            captured["headers"] = dict(req.header_items())
+            return FakeResponse()
+
+        with mock.patch("urllib.request.urlopen", fake_urlopen):
+            data = schoolfit_api.request_json(
+                "GET",
+                "https://schoolfit.hk",
+                "/api/schools",
+                skill_code="sfhk_custom_code",
+                trace_id="sf_trace_1",
+            )
+        self.assertEqual(data, {"ok": True})
+        self.assertEqual(captured["headers"]["X-schoolfit-skill-code"], "sfhk_custom_code")
+        self.assertEqual(captured["headers"]["X-schoolfit-skill-trace-id"], "sf_trace_1")
+        self.assertEqual(captured["headers"]["X-schoolfit-skill-version"], "1.0.0")
+
+    def test_skill_code_can_appear_after_subcommand(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "search-schools",
+            "--q",
+            "沙田",
+            "--skill-code",
+            "sfhk_after_subcommand",
+        ])
+        with mock.patch.object(schoolfit_api, "request_json", side_effect=[
+            {"activationStatus": "active"},
+            {"count": 0, "schools": []},
+        ]) as request:
+            schoolfit_api.run(args)
+        self.assertEqual(request.call_args_list[-1].kwargs["skill_code"], "sfhk_after_subcommand")
+
+    def test_saved_skill_code_is_used_before_reserved_fallback(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = pathlib.Path(tmpdir) / "skill.json"
+            env = {
+                "SCHOOLFIT_SKILL_CONFIG": str(config_path),
+                "SCHOOLFIT_SKILL_CODE": "",
+                "SCHOOLFIT_SKILL_API_CODE": "",
+            }
+            with mock.patch.dict("os.environ", env, clear=False):
+                schoolfit_api.save_skill_code("sfhk_saved_code")
+                self.assertEqual(schoolfit_api.resolve_skill_code(), "sfhk_saved_code")
+
+    def test_skill_code_precedence_prefers_cli_then_env_then_config(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = pathlib.Path(tmpdir) / "skill.json"
+            with mock.patch.dict("os.environ", {"SCHOOLFIT_SKILL_CONFIG": str(config_path), "SCHOOLFIT_SKILL_CODE": "sfhk_env_code"}, clear=False):
+                schoolfit_api.save_skill_code("sfhk_saved_code")
+                self.assertEqual(schoolfit_api.resolve_skill_code("sfhk_cli_code"), "sfhk_cli_code")
+                self.assertEqual(schoolfit_api.resolve_skill_code(), "sfhk_env_code")
+
+    def test_legacy_skill_api_code_is_after_saved_config(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = pathlib.Path(tmpdir) / "skill.json"
+            env = {
+                "SCHOOLFIT_SKILL_CONFIG": str(config_path),
+                "SCHOOLFIT_SKILL_CODE": "",
+                "SCHOOLFIT_SKILL_API_CODE": "sfhk_legacy_code",
+            }
+            with mock.patch.dict("os.environ", env, clear=False):
+                schoolfit_api.save_skill_code("sfhk_saved_code")
+                self.assertEqual(schoolfit_api.resolve_skill_code(), "sfhk_saved_code")
+
+    def test_reserved_fallback_when_no_code_is_configured(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = pathlib.Path(tmpdir) / "missing.json"
+            env = {
+                "SCHOOLFIT_SKILL_CONFIG": str(config_path),
+                "SCHOOLFIT_SKILL_CODE": "",
+                "SCHOOLFIT_SKILL_API_CODE": "",
+            }
+            with mock.patch.dict("os.environ", env, clear=False):
+                self.assertEqual(schoolfit_api.resolve_skill_code(), schoolfit_api.SCHOOLFIT_SKILL_CLIENT_CODE)
+
+    def test_telemetry_uses_hash_prefix_not_code_display(self):
+        code = "sfhk_secret_code_123456"
+        payload = schoolfit_api.telemetry_payload("search-schools", "/api/schools", code, "sf_trace", 0, 200)
+        self.assertEqual(payload["skillCodeHashPrefix"], schoolfit_api.code_hash_prefix(code))
+        self.assertNotIn("sfhk", payload["skillCodeHashPrefix"])
+        self.assertNotIn("123456", payload["skillCodeHashPrefix"])
+
+    def test_setup_code_saves_after_activation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = pathlib.Path(tmpdir) / "skill.json"
+            with mock.patch.dict("os.environ", {"SCHOOLFIT_SKILL_CONFIG": str(config_path)}, clear=False):
+                args = schoolfit_api.build_parser().parse_args(["setup-code", "--code", "sfhk_setup_code"])
+                with mock.patch.object(schoolfit_api, "request_json", return_value={"activationStatus": "active"}) as request:
+                    output = schoolfit_api.run(args)
+                self.assertEqual(output["configPath"], str(config_path))
+                self.assertEqual(schoolfit_api.load_saved_skill_code(), "sfhk_setup_code")
+                self.assertEqual(request.call_args.kwargs["skill_code"], "sfhk_setup_code")
+
+    def test_telemetry_failure_does_not_raise(self):
+        with mock.patch.object(schoolfit_api, "request_json", side_effect=schoolfit_api.SchoolFitError("boom")):
+            schoolfit_api.post_telemetry(
+                "https://schoolfit.hk",
+                {"traceId": "sf_trace", "endpoint": "/api/schools"},
+                "sfhk_code",
+            )
 
     def test_infer_intent_from_prompt(self):
         args = schoolfit_api.build_parser().parse_args([
