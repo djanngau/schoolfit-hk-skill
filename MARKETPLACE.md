@@ -38,7 +38,7 @@ education, hong-kong, school-selection, secondary-school, admissions, vacancies,
 
 - Host allowlist is restricted to `schoolfit.hk`.
 - The helper rejects custom schemes, credentials, custom ports, and non-API paths.
-- First use guides the user to `https://schoolfit.hk/skill-code` to generate a trial activation code.
+- First use guides the user to `https://schoolfit.hk/skill-code` to generate a trial activation code, then paste it back into the same chat window for the Agent.
 - The `X-SchoolFit-Skill-Code` header supports activation, rate limiting and anonymous telemetry; it is not a payment token or student identity.
 - The v1 skill does not call `/api/agent/chat` to avoid LLM cost and persistent session creation.
 - The skill keeps official facts, third-party Band references, community summaries, vacancy signals, and admission notices separated.

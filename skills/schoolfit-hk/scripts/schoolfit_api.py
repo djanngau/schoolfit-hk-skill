@@ -33,10 +33,10 @@ SKILL_VERSION_HEADER = "X-SchoolFit-Skill-Version"
 SKILL_ACTIVATION_STATUS_HEADER = "X-SchoolFit-Skill-Activation-Status"
 ACTIVATION_PAGE_URL = "https://schoolfit.hk/skill-code"
 SKILL_REQUIRES_CODE_MESSAGE = (
-    "請先開啟 https://schoolfit.hk/skill-code 取得授權碼，並加入 --skill-code 參數後重試。"
+    "請先開啟 https://schoolfit.hk/skill-code 取得授權碼，複製後直接在聊天窗口發給 Agent。"
 )
 SKILL_ACTIVATION_HINT = (
-    "請先到 https://schoolfit.hk/skill-code 取得授權碼，複製後傳給 Agent。"
+    "請先到 https://schoolfit.hk/skill-code 取得授權碼，複製後直接在聊天窗口發給 Agent。"
 )
 SKILL_USAGE_EVENT = "command_run"
 SKILL_TELEMETRY_ENDPOINT = "/api/skill/telemetry"
@@ -96,7 +96,9 @@ def activation_required_output(command: str, trace_id: TraceId, code: str | None
         "activationReason": reason,
         "activationUrl": ACTIVATION_PAGE_URL,
         "message": SKILL_REQUIRES_CODE_MESSAGE,
-        "example": f"python3 scripts/schoolfit_api.py {command} --skill-code YOUR_CODE",
+        "chatInstruction": "請把取得的授權碼原文貼回這個聊天窗口，例如：我的 SchoolFit 授權碼是 sfhk_xxxxx。",
+        "agentInstruction": "收到用戶授權碼後，後續工具調用請使用 --skill-code 或 SCHOOLFIT_SKILL_CODE 傳入該碼；不要要求用戶操作命令行。",
+        "example": "我的 SchoolFit 授權碼是 sfhk_xxxxxxxxxxxxxxxx",
         "skillVersion": SKILL_VERSION,
         "traceId": trace_id,
         "schoolfitUrl": DEFAULT_BASE_URL,

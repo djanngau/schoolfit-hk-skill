@@ -17,23 +17,24 @@ Use this skill to help families make conservative Hong Kong secondary-school dec
 - Do not query local Postgres, Prisma, SQLite, JSON snapshots, or the Edu source tree for user answers.
 - Keep official facts, third-party Band references, public review summaries, vacancy data, and admission notices visibly separate.
 - Never call `/api/agent/chat` in v1. It can consume LLM resources and create persistent sessions; it is reserved for a future paid/API-gated version.
-- First use requires a trial activation code. Ask the user to open `https://schoolfit.hk/skill-code`, generate a code, and send it back to the Agent. The helper sends it as `X-SchoolFit-Skill-Code`.
+- After installation, the first user-facing response must ask the user to open `https://schoolfit.hk/skill-code`, generate an authorization code, copy it, and paste it back into the same chat window for the Agent. Do not ask the user to configure a terminal unless they explicitly want CLI usage.
+- First use requires that trial activation code. After the user sends it in chat, the Agent should pass it to the helper as `--skill-code` or `SCHOOLFIT_SKILL_CODE`; the helper sends it as `X-SchoolFit-Skill-Code`.
 - The code is a trial-run authorization and telemetry key, not a password, payment token, or student identity.
 
 ## Quick Commands
 
 Use `<base_dir>` as the directory that contains this `SKILL.md`.
 
-Before the first search, activate the skill:
-
-```bash
-python3 <base_dir>/scripts/schoolfit_api.py metadata --skill-code "PASTE_CODE_FROM_SCHOOLFIT"
-```
-
-If the user has no code yet, reply with:
+After installation, if no authorization code has been provided yet, say this in the chat window before doing any search:
 
 ```text
-請先打開 https://schoolfit.hk/skill-code 取得授權碼，複製後發給我，我再幫你查學校。
+請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit 授權碼，複製後直接發到這個聊天窗口。我收到後就可以幫你查學校、比較、做推薦和申請計劃。
+```
+
+When the user pastes a code such as `sfhk_...`, keep using it for subsequent SchoolFit calls in the current conversation. CLI examples below are for agents and testers, not instructions to give to ordinary users:
+
+```bash
+python3 <base_dir>/scripts/schoolfit_api.py metadata --skill-code "PASTE_CODE_FROM_CHAT"
 ```
 
 Search schools:

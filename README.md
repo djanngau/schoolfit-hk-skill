@@ -39,7 +39,7 @@ cow skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 - Calls only `https://schoolfit.hk/api/...`.
 - Does not read local Edu databases, Prisma files, raw data snapshots, cookies, or `.env` files.
 - Rejects non-`schoolfit.hk` base URLs.
-- First run asks the user to open `https://schoolfit.hk/skill-code`, generate a trial code, and pass it to the Agent.
+- First run asks the user to open `https://schoolfit.hk/skill-code`, generate a trial code, copy it, and paste it back into the same chat window for the Agent.
 - Sends `X-SchoolFit-Skill-Code`, `X-SchoolFit-Skill-Version`, and trace metadata for activation and anonymous telemetry. The code is not a payment token or student identity.
 - Keeps official facts, third-party Band references, community summaries, vacancies, and admissions notices separate.
 
