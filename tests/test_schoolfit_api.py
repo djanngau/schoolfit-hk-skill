@@ -211,6 +211,7 @@ class SchoolFitApiTests(unittest.TestCase):
             output = schoolfit_api.run(args)
         self.assertEqual(request.call_count, 1)
         self.assertTrue(request.call_args.kwargs["params"]["auditData"])
+        self.assertTrue(request.call_args.kwargs["params"]["verbose"])
         self.assertEqual(output["admissionAndVacancy"]["audit"]["checkedAt"], "2026-05-22T00:00:00.000Z")
 
     def test_advisor_search_routes_boarding_query_as_structured_filter(self):
@@ -248,6 +249,7 @@ class SchoolFitApiTests(unittest.TestCase):
         params = request.call_args.kwargs["params"]
         self.assertEqual(params["intent"], "vacancy")
         self.assertTrue(params["auditData"])
+        self.assertTrue(params["verbose"])
 
     def test_advisor_search_can_disable_auto_audit(self):
         args = schoolfit_api.build_parser().parse_args([
@@ -554,6 +556,7 @@ class SchoolFitApiTests(unittest.TestCase):
         ]) as request:
             output = schoolfit_api.run(args)
         self.assertEqual(request.call_count, 1)
+        self.assertTrue(request.call_args.kwargs["params"]["verbose"])
         self.assertEqual(output["school"]["slug"], "sha-tin-methodist-college")
         self.assertEqual(output["school"]["schoolfitUrl"], "https://schoolfit.hk/schools/sha-tin-methodist-college")
         self.assertIn("sourceLedger", output)

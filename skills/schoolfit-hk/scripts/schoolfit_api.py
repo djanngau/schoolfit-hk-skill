@@ -2566,6 +2566,7 @@ def advisory_search_params(args: argparse.Namespace) -> dict[str, Any]:
         "includeDecisionBrief": getattr(args, "include_decision_brief", None),
         "hasBoarding": has_boarding,
         "auditData": audit_data,
+        "verbose": True,
     }
 
 
@@ -2882,7 +2883,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         })
     elif command == "school-report":
         slug = urllib.parse.quote(args.slug.strip(), safe="")
-        school_decision_payload = api("GET", f"/api/skill/schools/{slug}/decision-brief")
+        school_decision_payload = api("GET", f"/api/skill/schools/{slug}/decision-brief", params={"verbose": True})
         student_profile = sanitize_student_profile(read_json_arg(getattr(args, "student_profile_json", None)))
         school_payload = (school_decision_payload or {}).get("school", {}) if isinstance(school_decision_payload, dict) else {}
         vacancy_payload = (school_decision_payload or {}).get("vacancy", {}) if isinstance(school_decision_payload, dict) else {}
