@@ -14,6 +14,15 @@ metadata:
       - name: SCHOOLFIT_BASE_URL
         required: false
         description: Optional SchoolFit HK base URL. Must remain https://schoolfit.hk.
+      - name: SCHOOLFIT_SKILL_CODE
+        required: false
+        description: Optional authorization code generated from https://schoolfit.hk/skill-code. Prefer passing the code in active chat context.
+      - name: SCHOOLFIT_SKILL_CONFIG
+        required: false
+        description: Optional local JSON config path for tester-managed authorization code storage.
+      - name: SCHOOLFIT_SKILL_API_CODE
+        required: false
+        description: Legacy authorization-code environment variable kept for backward compatibility.
 ---
 
 # SchoolFit HK
@@ -165,6 +174,7 @@ python3 <base_dir>/scripts/schoolfit_api.py admissions --grade S1 --is-active tr
 
 When presenting results:
 
+- Match the user's language. If the user asks in Traditional Chinese, answer in Traditional Chinese; if they ask in Simplified Chinese, answer in Simplified Chinese; if they ask in English, answer in English. Keep Hong Kong school terms such as Band 參考, 直資/DSS, 資助/aided, 官立/government and EMI/CMI precise.
 - For broad search or parent advisory questions, prefer `advisor-search` over raw `search-schools`. It returns both structured API results and an `llmBrief` for the calling model to polish.
 - Use the returned `llmBrief` as guidance, then write the final answer yourself in natural language. Do not paste raw JSON unless the user asks for raw data.
 - Treat `llmBrief.factsOnly=true` as binding: polish the wording, but never add school facts that are not present in API output.

@@ -618,45 +618,85 @@ def privacy_warning_output(command: str, trace_id: TraceId, findings: list[dict[
 DISTRICT_ALIASES = {
     "沙田": "沙田區",
     "沙田區": "沙田區",
+    "沙田区": "沙田區",
+    "sha tin": "沙田區",
+    "shatin": "沙田區",
     "馬鞍山": "沙田區",
     "马鞍山": "沙田區",
+    "ma on shan": "沙田區",
     "九龍城": "九龍城區",
+    "九龍城區": "九龍城區",
     "九龙城": "九龍城區",
+    "九龙城区": "九龍城區",
+    "kowloon city": "九龍城區",
     "油尖旺": "油尖旺區",
+    "yau tsim mong": "油尖旺區",
     "深水埗": "深水埗區",
+    "深水埗区": "深水埗區",
+    "sham shui po": "深水埗區",
     "黃大仙": "黃大仙區",
     "黄大仙": "黃大仙區",
+    "wong tai sin": "黃大仙區",
     "觀塘": "觀塘區",
     "观塘": "觀塘區",
+    "kwun tong": "觀塘區",
     "大埔": "大埔區",
+    "tai po": "大埔區",
     "屯門": "屯門區",
     "屯门": "屯門區",
+    "tuen mun": "屯門區",
     "元朗": "元朗區",
+    "yuen long": "元朗區",
     "荃灣": "荃灣區",
     "荃湾": "荃灣區",
+    "tsuen wan": "荃灣區",
     "葵青": "葵青區",
+    "kwai tsing": "葵青區",
     "西貢": "西貢區",
     "西贡": "西貢區",
+    "sai kung": "西貢區",
     "將軍澳": "西貢區",
     "将军澳": "西貢區",
+    "tseung kwan o": "西貢區",
     "中西區": "中西區",
+    "中西区": "中西區",
+    "central and western": "中西區",
     "灣仔": "灣仔區",
     "湾仔": "灣仔區",
+    "wan chai": "灣仔區",
     "東區": "東區",
     "东区": "東區",
+    "eastern": "東區",
     "南區": "南區",
+    "南区": "南區",
+    "southern": "南區",
     "北區": "北區",
+    "北区": "北區",
+    "north": "北區",
     "離島": "離島區",
     "离岛": "離島區",
+    "islands": "離島區",
 }
 
 GRADE_ALIASES = {
     "中一": "S1",
+    "初一": "S1",
+    "form 1": "S1",
     "中二": "S2",
+    "初二": "S2",
+    "form 2": "S2",
     "中三": "S3",
+    "初三": "S3",
+    "form 3": "S3",
     "中四": "S4",
+    "高一": "S4",
+    "form 4": "S4",
     "中五": "S5",
+    "高二": "S5",
+    "form 5": "S5",
     "中六": "S6",
+    "高三": "S6",
+    "form 6": "S6",
 }
 
 SCHOOL_NAME_ALIASES = {
@@ -743,11 +783,40 @@ NEARBY_DISTRICTS = {
 }
 
 
+def contains_any_text(raw: str, lowered: str, words: tuple[str, ...]) -> bool:
+    for word in words:
+        if not word:
+            continue
+        if word.isascii():
+            if word.lower() in lowered:
+                return True
+        elif word in raw:
+            return True
+    return False
+
+
+def detect_response_language(raw: str, lowered: str) -> str:
+    if contains_any_text(raw, lowered, ("用英文", "英文回答", "answer in english", "respond in english", "english answer")):
+        return "en"
+    if contains_any_text(raw, lowered, ("用简体", "简体回答", "簡體回答", "simplified chinese", "zh-hans")):
+        return "zh-Hans"
+    if contains_any_text(raw, lowered, ("用繁體", "繁體回答", "繁体回答", "traditional chinese", "zh-hant")):
+        return "zh-Hant"
+    simplified_markers = ("学校", "学额", "学位", "申请", "报名", "推荐", "建议", "适合", "稳阵", "直资", "环境")
+    if any(marker in raw for marker in simplified_markers):
+        return "zh-Hans"
+    if raw and all(ord(char) < 128 for char in raw):
+        return "en"
+    return "zh-Hant"
+
+
 def parse_parent_request_text(text: str | None) -> dict[str, Any]:
     raw = (text or "").strip()
     lowered = raw.lower()
+    response_language = detect_response_language(raw, lowered)
     parsed: dict[str, Any] = {
         "rawText": raw,
+        "responseLanguage": response_language,
         "filters": {},
         "recommendationSignals": {},
         "intentHints": [],
@@ -759,9 +828,10 @@ def parse_parent_request_text(text: str | None) -> dict[str, Any]:
     }
     filters = parsed["filters"]
     signals = parsed["recommendationSignals"]
+    signals["responseLanguage"] = response_language
 
     for alias, district in DISTRICT_ALIASES.items():
-        if alias in raw:
+        if (alias.isascii() and alias in lowered) or (not alias.isascii() and alias in raw):
             filters["district"] = district
             signals["district"] = district
             break
@@ -774,36 +844,40 @@ def parse_parent_request_text(text: str | None) -> dict[str, Any]:
         filters["banding"] = band
         signals["banding"] = band
 
-    if any(word in raw for word in ("男女校", "男女", "co-ed", "coed")):
+    if contains_any_text(raw, lowered, ("男女校", "男女", "co-ed", "coed", "co-educational", "mixed school", "mixed gender")):
         filters["gender"] = "男女校"
         signals["gender"] = "男女校"
-    elif "女校" in raw or "girls" in lowered:
+    elif contains_any_text(raw, lowered, ("女校", "girls", "girl school", "girls school", "girls' school")):
         filters["gender"] = "女校"
         signals["gender"] = "女校"
-    elif "男校" in raw or "boys" in lowered:
+    elif contains_any_text(raw, lowered, ("男校", "boys", "boy school", "boys school", "boys' school")):
         filters["gender"] = "男校"
         signals["gender"] = "男校"
 
-    if any(word in raw for word in ("英文中學", "英中", "英文")) or "emi" in lowered:
+    if contains_any_text(raw, lowered, ("英文中學", "英文中学", "英中", "英文", "english medium", "english-medium", "emi", "english environment")):
         filters["medium"] = "英文"
         signals["medium"] = "英文"
         signals["languagePriority"] = "英文環境"
-    elif any(word in raw for word in ("中文中學", "中中", "中文")) or "cmi" in lowered:
+    elif contains_any_text(raw, lowered, ("中文中學", "中文中学", "中中", "中文", "chinese medium", "chinese-medium", "cmi")):
         filters["medium"] = "中文"
         signals["medium"] = "中文"
 
-    if "直資" in raw or "dss" in lowered:
-        rejects_dss = any(word in raw for word in ("不要直資", "唔要直資", "不接受直資", "不考慮直資"))
+    if contains_any_text(raw, lowered, ("直資", "直资", "dss", "direct subsidy")):
+        rejects_dss = contains_any_text(raw, lowered, (
+            "不要直資", "唔要直資", "不接受直資", "不考慮直資",
+            "不要直资", "不接受直资", "不考虑直资",
+            "no dss", "not dss", "without dss", "reject dss", "no direct subsidy", "not direct subsidy",
+        ))
         signals["acceptsDss"] = not rejects_dss
         if not rejects_dss:
             filters["fundingType"] = "直資"
-    if any(word in raw for word in ("官立", "官校")):
+    if contains_any_text(raw, lowered, ("官立", "官校", "government school", "government")):
         filters["fundingType"] = "官立"
-    if "資助" in raw or "资助" in raw:
+    if contains_any_text(raw, lowered, ("資助", "资助", "aided")):
         filters["fundingType"] = "資助"
 
     for label, grade in GRADE_ALIASES.items():
-        if label in raw:
+        if (label.isascii() and label in lowered) or (not label.isascii() and label in raw):
             filters["vacancyGrade"] = grade
             signals["grade"] = grade
             break
@@ -812,33 +886,33 @@ def parse_parent_request_text(text: str | None) -> dict[str, Any]:
         filters["vacancyGrade"] = f"S{grade_match.group(1)}"
         signals["grade"] = f"S{grade_match.group(1)}"
 
-    if any(word in raw for word in ("學額", "学额", "學位", "学位", "插班", "插班位", "空位", "餘額", "余额", "有位", "有无位")) or "vacancy" in lowered:
+    if contains_any_text(raw, lowered, ("學額", "学额", "學位", "学位", "插班", "插班位", "空位", "餘額", "余额", "有位", "有无位", "vacancy", "vacancies", "places", "seats", "available places")):
         parsed["intentHints"].append("vacancy")
         filters["hasVacancy"] = True
-    if any(word in raw for word in ("招生", "通告", "截止", "申請", "申请", "報名", "报名")) or "deadline" in lowered:
+    if contains_any_text(raw, lowered, ("招生", "通告", "截止", "申請", "申请", "報名", "报名", "deadline", "deadlines", "admission", "admissions", "application", "apply")):
         parsed["intentHints"].append("admissions")
-    if any(word in raw for word in ("比較", "对比", "對比", "vs")):
+    if contains_any_text(raw, lowered, ("比較", "对比", "對比", "vs", "compare", "comparison", "versus")):
         parsed["intentHints"].append("compare")
-    if any(word in raw for word in ("推薦", "推荐", "建議", "建议", "幫我揀", "帮我选", "適合", "适合")):
+    if contains_any_text(raw, lowered, ("推薦", "推荐", "建議", "建议", "幫我揀", "帮我选", "適合", "适合", "recommend", "recommendation", "suggest", "shortlist", "suitable")):
         parsed["intentHints"].append("recommend")
 
-    if any(word in raw for word in ("穩陣", "稳阵", "保守", "安全", "safe")):
+    if contains_any_text(raw, lowered, ("穩陣", "稳阵", "保守", "安全", "safe", "conservative", "low risk")):
         signals["riskPreference"] = "conservative"
-    elif any(word in raw for word in ("衝", "冲", "進取", "进取", "reach")):
+    elif contains_any_text(raw, lowered, ("衝", "冲", "進取", "进取", "reach", "ambitious")):
         signals["riskPreference"] = "ambitious"
-    elif any(word in raw for word in ("平衡", "match")):
+    elif contains_any_text(raw, lowered, ("平衡", "match", "balanced")):
         signals["riskPreference"] = "balanced"
 
-    if any(word in raw for word in ("只看", "只要", "改成", "換成", "换成", "上次", "剛才", "刚才", "同樣", "一样")):
+    if contains_any_text(raw, lowered, ("只看", "只要", "改成", "換成", "换成", "上次", "剛才", "刚才", "同樣", "一样", "last time", "same as before", "change to", "only")):
         parsed["conversationHints"].append("continue_previous_filters")
-    if any(word in raw for word in ("唔想太谷", "不要太谷", "不想太卷", "校風好", "校风好", "關愛", "关爱")):
+    if contains_any_text(raw, lowered, ("唔想太谷", "不要太谷", "不想太卷", "校風好", "校风好", "關愛", "关爱", "pastoral", "caring", "not too stressful")):
         signals.setdefault("priorities", [])
         signals["priorities"].append("校風")
         signals["personality"] = "偏好校風穩定、壓力不要過高"
-    if any(word in raw for word in ("近地鐵", "近地铁", "交通方便", "車程", "车程", "通勤")):
+    if contains_any_text(raw, lowered, ("近地鐵", "近地铁", "交通方便", "車程", "车程", "通勤", "commute", "transport", "near mtr")):
         signals.setdefault("priorities", [])
         signals["priorities"].append("通勤")
-    if any(word in raw for word in ("活動多", "多活動", "音樂", "音乐", "運動", "运动", "stem", "STEAM", "steam")):
+    if contains_any_text(raw, lowered, ("活動多", "多活動", "活动多", "多活动", "音樂", "音乐", "運動", "运动", "stem", "STEAM", "steam", "sports", "music", "activities")):
         signals.setdefault("priorities", [])
         signals["priorities"].append("課外活動")
 
@@ -851,34 +925,53 @@ def parse_parent_request_text(text: str | None) -> dict[str, Any]:
         if tuition_match:
             filters["maxTuition"] = int(tuition_match.group(1))
             signals["maxTuition"] = filters["maxTuition"]
+        else:
+            tuition_match = re.search(r"(?:tuition|fee|budget|under|below|max)[^\d]{0,12}(\d{4,6})", lowered)
+            if tuition_match:
+                filters["maxTuition"] = int(tuition_match.group(1))
+                signals["maxTuition"] = filters["maxTuition"]
 
     priorities = []
     priority_map = {
         "校風": "校風",
+        "校风": "校風",
         "英文環境": "英文環境",
+        "英文环境": "英文環境",
+        "english environment": "英文環境",
         "學額": "學額",
+        "学额": "學額",
+        "vacancy": "學額",
         "招生": "招生",
+        "admission": "招生",
         "交通": "通勤",
         "通勤": "通勤",
+        "commute": "通勤",
         "學費": "學費",
+        "学费": "學費",
+        "tuition": "學費",
         "面試": "面試",
+        "面试": "面試",
+        "interview": "面試",
         "支援": "支援需要",
+        "support": "支援需要",
         "sen": "SEN 支援",
         "非華語": "非華語支援",
+        "非华语": "非華語支援",
+        "ncs": "非華語支援",
     }
     for keyword, label in priority_map.items():
         if keyword in raw or keyword in lowered:
             priorities.append(label)
     if priorities:
         signals["priorities"] = list(dict.fromkeys((signals.get("priorities") or []) + priorities))
-    if any(word in raw for word in ("SEN", "sen", "特殊需要", "非華語", "非华语", "NCS", "ncs")):
+    if contains_any_text(raw, lowered, ("SEN", "sen", "特殊需要", "special needs", "非華語", "非华语", "NCS", "ncs")):
         signals["supportNeeds"] = [item for item in ("SEN" if "sen" in lowered or "特殊需要" in raw else None, "NCS" if "ncs" in lowered or "非華語" in raw or "非华语" in raw else None) if item]
 
     suggested = {
         "advisor-search": {
             "q": raw,
             **filters,
-            **{key: value for key, value in signals.items() if key in {"languagePriority", "acceptsDss", "priorities", "supportNeeds"}},
+            **{key: value for key, value in signals.items() if key in {"languagePriority", "acceptsDss", "priorities", "supportNeeds", "responseLanguage"}},
         }
     }
     parsed["suggestedCommandParams"] = suggested
@@ -1165,7 +1258,7 @@ def standard_llm_brief(command: str, purpose: str, must_mention: list[str], fact
     return {
         "command": command,
         "purpose": purpose,
-        "recommendedTone": "繁體中文、專業、親切、保守；可潤色語氣，但不可新增 API 沒返回的學校事實。",
+        "recommendedTone": "Use the user's language: Traditional Chinese, Simplified Chinese, or English. Keep Hong Kong school terms precise; polish tone but never add school facts not returned by the API.",
         "factsOnly": True,
         "doNotInvent": [
             "不要新增學校排名、錄取機率、官方 Band、未返回的學費或截止日。",
@@ -1304,7 +1397,7 @@ def self_check_output() -> dict[str, Any]:
         script = handle.read()
     chat_path = "/api/" + "agent/chat"
     script_checks = [
-        ("version_1_0_6", f'SKILL_VERSION = "{SKILL_VERSION}"' in script),
+        ("version_current", f'SKILL_VERSION = "{SKILL_VERSION}"' in script),
         ("host_allowlist", "ALLOWED_HOSTS = {\"schoolfit.hk\"}" in script),
         ("activation_page", ACTIVATION_PAGE_URL in script),
         ("pii_guard", "detect_sensitive_input" in script),
@@ -1836,7 +1929,7 @@ def build_search_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
             {"highlights": highlights, "count": output.get("count", 0)},
         ),
         "purpose": "Use these structured search results to write a polished Hong Kong secondary-school advisor answer.",
-        "recommendedTone": "繁體中文、專業、親切、保守；先給結論，再列 3-5 間值得看，最後推薦到 SchoolFit HK 深入比較。",
+        "recommendedTone": "Use the user's language: Traditional Chinese, Simplified Chinese, or English. Be professional and conservative; give the conclusion first, then list 3-5 schools, then point to SchoolFit HK for deeper comparison.",
         "mustMention": [
             "資料來自 SchoolFit HK: https://schoolfit.hk/",
             "Band 只可寫作非官方 Band 參考。",
@@ -1851,7 +1944,7 @@ def build_compare_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
     schools = output.get("schools", [])[:4]
     return {
         "purpose": "Turn compare JSON into a short parent-facing comparison.",
-        "recommendedTone": "繁體中文，像升學顧問；不要照抄 JSON。",
+        "recommendedTone": "Use the user's language: Traditional Chinese, Simplified Chinese, or English. Write like a conservative school advisor; do not copy raw JSON.",
         "mustMention": [
             "每間學校附 SchoolFit HK 連結。",
             "學額是時效資料，不代表保證取錄。",
@@ -1892,7 +1985,7 @@ def build_deep_compare_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
         })
     return {
         "purpose": "Convert deep compare result into an actionable shortlist comparison.",
-        "recommendedTone": "繁體中文，直接、保守、可落地。",
+        "recommendedTone": "Use the user's language: Traditional Chinese, Simplified Chinese, or English. Be direct, conservative, and actionable.",
         "mustMention": [
             "每間學校都要附 SchoolFit HK 連結。",
             "明確標註學額/招生資訊的資料時間與確認建議。",
@@ -2692,7 +2785,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     if command == "activate":
         pasted = getattr(args, "code", None) or getattr(args, "text", None)
-        skill_code = get_skill_code(args) or extract_skill_code_from_text(pasted) or (pasted.strip() if isinstance(pasted, str) else None)
+        pasted_code = extract_skill_code_from_text(pasted) or (pasted.strip() if isinstance(pasted, str) else None)
+        skill_code = resolve_skill_code(pasted_code)
         activation_status = activate_skill_code(base_url, skill_code, trace_id)
         output = activation_result_output(skill_code, activation_status, trace_id)
         record_telemetry(

@@ -387,6 +387,25 @@ class SchoolFitApiTests(unittest.TestCase):
             with mock.patch.dict("os.environ", env, clear=False):
                 self.assertEqual(schoolfit_api.resolve_skill_code(), schoolfit_api.SCHOOLFIT_SKILL_CLIENT_CODE)
 
+    def test_activate_prefers_pasted_code_over_reserved_fallback(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "activate",
+            "我的 SchoolFit 授權碼是 sfhk_pasted_code_123456",
+        ])
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = pathlib.Path(tmpdir) / "missing.json"
+            env = {
+                "SCHOOLFIT_SKILL_CONFIG": str(config_path),
+                "SCHOOLFIT_SKILL_CODE": "",
+                "SCHOOLFIT_SKILL_API_CODE": "",
+            }
+            with mock.patch.dict("os.environ", env, clear=False):
+                with mock.patch.object(schoolfit_api, "request_json", return_value={"activationStatus": "active"}) as request:
+                    output = schoolfit_api.run(args)
+        self.assertTrue(output["activated"])
+        self.assertEqual(request.call_args.kwargs["skill_code"], "sfhk_pasted_code_123456")
+        self.assertEqual(output["code"]["display"], "sfhk...3456")
+
     def test_telemetry_uses_hash_prefix_not_code_display(self):
         code = "sfhk_secret_code_123456"
         payload = schoolfit_api.telemetry_payload("search-schools", "/api/schools", code, "sf_trace", 0, 200)
@@ -639,6 +658,30 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertEqual(output["filters"]["gender"], "女校")
         self.assertEqual(output["filters"]["medium"], "英文")
         self.assertNotIn("fundingType", output["filters"])
+        self.assertFalse(output["recommendationSignals"]["acceptsDss"])
+        self.assertEqual(output["recommendationSignals"]["riskPreference"], "conservative")
+        self.assertEqual(output["filters"]["vacancyGrade"], "S1")
+
+    def test_parse_parent_request_supports_simplified_chinese(self):
+        output = schoolfit_api.parse_parent_request_text("九龙城 Band 1 女校 英文环境 不要直资 想稳阵 初一 用简体回答")
+        self.assertEqual(output["responseLanguage"], "zh-Hans")
+        self.assertEqual(output["filters"]["district"], "九龍城區")
+        self.assertEqual(output["filters"]["banding"], "Band 1")
+        self.assertEqual(output["filters"]["gender"], "女校")
+        self.assertEqual(output["filters"]["medium"], "英文")
+        self.assertFalse(output["recommendationSignals"]["acceptsDss"])
+        self.assertEqual(output["recommendationSignals"]["riskPreference"], "conservative")
+        self.assertEqual(output["filters"]["vacancyGrade"], "S1")
+
+    def test_parse_parent_request_supports_english(self):
+        output = schoolfit_api.parse_parent_request_text(
+            "Kowloon City Band 1 girls school English medium no DSS conservative Form 1 answer in English"
+        )
+        self.assertEqual(output["responseLanguage"], "en")
+        self.assertEqual(output["filters"]["district"], "九龍城區")
+        self.assertEqual(output["filters"]["banding"], "Band 1")
+        self.assertEqual(output["filters"]["gender"], "女校")
+        self.assertEqual(output["filters"]["medium"], "英文")
         self.assertFalse(output["recommendationSignals"]["acceptsDss"])
         self.assertEqual(output["recommendationSignals"]["riskPreference"], "conservative")
         self.assertEqual(output["filters"]["vacancyGrade"], "S1")
@@ -905,6 +948,13 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertFalse(request.called)
         self.assertTrue(output["ok"])
         self.assertEqual(output["skillVersion"], schoolfit_api.SKILL_VERSION)
+        self.assertIn("version_current", {check["name"] for check in output["checks"]})
+
+    def test_llm_brief_allows_traditional_simplified_and_english_answers(self):
+        brief = schoolfit_api.standard_llm_brief("demo", "purpose", [])
+        self.assertIn("Traditional Chinese", brief["recommendedTone"])
+        self.assertIn("Simplified Chinese", brief["recommendedTone"])
+        self.assertIn("English", brief["recommendedTone"])
 
     def test_parse_parent_request_returns_missing_questions_and_conversation_hint(self):
         output = schoolfit_api.parse_parent_request_text("上次條件只看女校，唔想太谷，近地鐵")

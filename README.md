@@ -20,6 +20,7 @@ The skill wraps SchoolFit HK features for:
 - robust district fallback search for API full-text/filter under-return cases
 - local package self-check
 - conservative source labeling and decision caveats
+- Traditional Chinese, Simplified Chinese, and English parent prompts, with final answers matched to the user's language
 
 ## Install
 
