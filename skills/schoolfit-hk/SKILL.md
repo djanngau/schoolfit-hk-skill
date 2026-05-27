@@ -1,7 +1,7 @@
 ---
 name: schoolfit-hk
 description: Use when helping Hong Kong families search, compare, shortlist, or assess secondary schools with SchoolFit HK data, including admissions notices, EDB vacancy signals, Band references, and conservative school-selection advice.
-version: 1.0.11
+version: 1.0.12
 metadata:
   openclaw:
     homepage: https://github.com/djanngau/schoolfit-hk-skill
