@@ -23,8 +23,8 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.0.12"
-SKILL_VERSION_HEADER_VERSION = "1.0.12"
+SKILL_VERSION = "1.0.14"
+SKILL_VERSION_HEADER_VERSION = "1.0.14"
 MAX_COMPARE_IDS = 4
 ROBUST_SEARCH_PAGE_SIZE = 1000
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
@@ -34,7 +34,8 @@ SKILL_CODE_HEADER = "X-SchoolFit-Skill-Code"
 SKILL_TRACE_HEADER = "X-SchoolFit-Skill-Trace-Id"
 SKILL_VERSION_HEADER = "X-SchoolFit-Skill-Version"
 SKILL_ACTIVATION_STATUS_HEADER = "X-SchoolFit-Skill-Activation-Status"
-ACTIVATION_PAGE_URL = "https://schoolfit.hk/skill-code"
+ACTIVATION_PAGE_PATH = "/skill-code"
+ACTIVATION_PAGE_URL = f"{DEFAULT_BASE_URL}{ACTIVATION_PAGE_PATH}"
 SKILL_REQUIRES_CODE_MESSAGE = (
     "請先開啟 https://schoolfit.hk/skill-code 取得授權碼，複製後直接在聊天窗口發給 Agent。"
 )
@@ -74,6 +75,28 @@ def validate_base_url(base_url: str) -> str:
     if parsed.username or parsed.password or parsed.port:
         raise SchoolFitError("Base URL must not include credentials or custom ports.")
     return base_url.rstrip("/")
+
+
+def canonical_activation_url(raw_url: str | None = None) -> str:
+    """Return the only activation URL agents should show to users."""
+    if not raw_url:
+        return ACTIVATION_PAGE_URL
+    try:
+        parsed = urllib.parse.urlparse(raw_url.strip())
+    except Exception:
+        return ACTIVATION_PAGE_URL
+    if parsed.scheme == "https" and parsed.hostname == "schoolfit.hk" and parsed.path.startswith(ACTIVATION_PAGE_PATH):
+        return ACTIVATION_PAGE_URL
+    return ACTIVATION_PAGE_URL
+
+
+def activation_url_policy() -> dict[str, Any]:
+    return {
+        "canonicalUrl": ACTIVATION_PAGE_URL,
+        "allowed": "https://schoolfit.hk/skill-code only",
+        "strip": ["query", "hash", "path suffix", "tracking parameters"],
+        "recovery": "如果打開後找不到頁面，請把網址刪到 https://schoolfit.hk/skill-code 後再重新打開。",
+    }
 
 
 def next_trace_id() -> TraceId:
@@ -177,12 +200,13 @@ def activation_required_output(command: str, trace_id: TraceId, code: str | None
         "needsActivation": True,
         "activationStatus": "inactive",
         "activationReason": reason,
-        "activationUrl": ACTIVATION_PAGE_URL,
+        "activationUrl": canonical_activation_url(),
+        "activationUrlPolicy": activation_url_policy(),
         "message": SKILL_REQUIRES_CODE_MESSAGE,
         "chatInstruction": "請把取得的授權碼原文貼回這個聊天窗口，例如：我的 SchoolFit 授權碼是 sfhk_xxxxx。",
         "agentInstruction": "收到用戶授權碼後，後續工具調用請使用 --skill-code 或 SCHOOLFIT_SKILL_CODE 傳入該碼；不要要求用戶操作命令行。",
         "quickStart": {
-            "step1": "打開 https://schoolfit.hk/skill-code。",
+            "step1": "打開 https://schoolfit.hk/skill-code。若網址後面有 ?、# 或其他字串，請先刪到 /skill-code 為止。",
             "step2": "點擊生成授權碼。",
             "step3": "把授權碼原文貼回同一個 Agent 聊天窗口。",
             "step4": "之後直接問：幫我找沙田 Band 1 英文男女校。",
@@ -215,7 +239,8 @@ def activation_result_output(code: str | None, activation_status: ActivationMode
             "display": code_display(code),
             "hashPrefix": code_hash_prefix(code),
         },
-        "activationUrl": ACTIVATION_PAGE_URL,
+        "activationUrl": canonical_activation_url(),
+        "activationUrlPolicy": activation_url_policy(),
         "skillVersion": SKILL_VERSION,
         "traceId": trace_id,
         "sourceLedger": build_source_ledger(),
@@ -525,7 +550,7 @@ def safe_http_error(exc: urllib.error.HTTPError) -> str:
     except Exception:
         detail = exc.reason
     recovery = {
-        401: "請重新到 https://schoolfit.hk/skill-code 取得授權碼，貼回聊天窗口後再試。",
+        401: "請重新到 https://schoolfit.hk/skill-code 取得授權碼；如網址後面有 ?、# 或其他字串，先刪到 /skill-code。",
         403: "授權碼可能未啟用或已被停用，請重新取碼或稍後再試。",
         404: "找不到指定學校或端點；如是學校名稱，請先用 resolve-school 或 search-schools 查 slug。",
         429: "請求太頻密；稍等一分鐘後重試，或縮小查詢範圍。",
@@ -1274,9 +1299,15 @@ def quick_start_output(trace_id: TraceId) -> dict[str, Any]:
     return {
         "command": "quick-start",
         "activationStatus": "not_required",
+        "activationUrl": canonical_activation_url(),
+        "activationUrlPolicy": activation_url_policy(),
         "message": "安裝完成後，請先取得 SchoolFit 授權碼並貼回聊天窗口。",
         "steps": [
-            {"label": "打開取碼頁", "text": ACTIVATION_PAGE_URL},
+            {
+                "label": "打開取碼頁",
+                "text": canonical_activation_url(),
+                "note": "只使用這個固定 URL；如後面帶 ?、# 或其他字串，先刪到 /skill-code。",
+            },
             {"label": "生成授權碼", "text": "頁面無需登入，點擊即可生成新的 sfhk_ 開頭授權碼。"},
             {"label": "貼回 Agent", "text": "把授權碼原文發在同一個聊天窗口，例如：我的 SchoolFit 授權碼是 sfhk_xxxxx。"},
             {"label": "開始提問", "text": "例如：幫我找沙田 Band 1 英文男女校，最好有學額和申請提醒。"},
@@ -1326,8 +1357,8 @@ def marketplace_demo_payload() -> dict[str, Any]:
             {
                 "title": "Band 1 英文首選",
                 "prompt": "找沙田 Band 1 英文男女校，先做安全梯隊。",
-                "command": "advisor-search --q \"沙田 Band 1 英文 男女校\" --intent recommend",
-                "resultSummary": "自動抽取地區、Band、性別和語言，返回可由大模型潤色的 shortlist brief。",
+                "command": "advisor-search --q \"沙田 Band 1 英文 男女校，重視校風，不考慮直資\" --intent recommend --priorities 校風 英文 --no-dss --include-decision-brief",
+                "resultSummary": "自動抽取地區、Band、性別和語言，返回 parentQuestion、answerBlueprint、decisionBriefs 和可由大模型潤色的 shortlist brief。",
             },
             {
                 "title": "家長自然語言拆解",
@@ -1343,15 +1374,21 @@ def marketplace_demo_payload() -> dict[str, Any]:
             },
             {
                 "title": "建立短名單",
-                "prompt": "沙田 Band 1 英文男女校，幫我分首選、穩陣、備選。",
-                "command": "shortlist-builder --q \"沙田 Band 1 英文 男女校\"",
-                "resultSummary": "按首選/穩陣/備選/暫不建議輸出，並保留 caveats。",
+                "prompt": "沙田 Band 1 英文男女校，幫我分首選、穩陣、備選，不考慮直資。",
+                "command": "shortlist-builder --q \"沙田 Band 1 英文 男女校，不考慮直資\" --no-dss",
+                "resultSummary": "按首選/穩陣/備選/暫不建議輸出，並保留 DSS、學額和 Band caveats。",
             },
             {
                 "title": "學額與招生",
                 "prompt": "中四是否有學額？有沒有申請期限？",
                 "command": "vacancies --grade S4 --district 沙田區 --has-vacancy true\nadmissions --grade S4 --is-active true",
                 "resultSummary": "學額與招生分開輸出 source、dataMonth/lastSeenAt/confidence 和核實提示。",
+            },
+            {
+                "title": "單校決策摘要",
+                "prompt": "幫我深挖沙田循道中學的學額、招生和風險。",
+                "command": "decision-brief sha-tin-methodist-college",
+                "resultSummary": "返回 compact parent decision brief、學額/招生摘要、sourceLedger 和核實提示。",
             },
             {
                 "title": "申請計劃",
@@ -1365,10 +1402,11 @@ def marketplace_demo_payload() -> dict[str, Any]:
             {"name": "activate", "description": "Agent 收到 sfhk_ 授權碼後可用它驗碼，不要求用戶操作命令行。"},
             {"name": "parse-parent-request", "description": "把家長自然語言拆成可查詢條件，且不調 API。"},
             {"name": "resolve-school", "description": "把模糊學校名、簡稱或英文名解析成 SchoolFit slug 候選。"},
-            {"name": "advisor-search", "description": "對話式建議主入口，先做條件抽取和意圖識別再返回可潤色摘要。"},
+            {"name": "advisor-search", "description": "對話式建議主入口，返回 parentQuestion、answerBlueprint、sourceLedger 和可潤色摘要。"},
             {"name": "shortlist-builder", "description": "把搜尋結果整理成首選、穩陣、備選和暫不建議。"},
             {"name": "deep-compare", "description": "比較 2-4 間學校，產生差異、風險與下一步。"},
-            {"name": "school-report", "description": "生成單校決策簡報，含學額/招生時效核對點。"},
+            {"name": "decision-brief", "description": "生成單校 compact 決策摘要，含學額/招生時效核對點。"},
+            {"name": "school-report", "description": "decision-brief 的兼容別名，供舊 Agent 提示使用。"},
             {"name": "application-plan", "description": "生成家庭落地型申請清單與跟進節奏。"},
             {"name": "self-check", "description": "本地檢查 Skill 結構、版本、示例和敏感字串。"},
         ],
@@ -1464,7 +1502,7 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
                 for index, school in enumerate(schools[:8])
             ],
             "nextActions": [
-                "如第一個候選正確，下一步用 school-detail 或 school-report 查看。",
+                "如第一個候選正確，下一步用 school-detail 或 decision-brief 查看。",
                 "如有多間同名/相近學校，請家長確認中文名、英文名或地區。",
             ],
             "sourceLedger": source_ledger,
@@ -1524,19 +1562,21 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
         output["nextActions"] = build_deep_compare_next_actions(output)
         output["llmBrief"] = build_deep_compare_llm_brief(output)
         return output
-    if command == "school-report":
+    if command in {"decision-brief", "school-report"}:
         school = payload.get("school", {})
         vacancies = payload.get("vacancies", {})
         admissions = payload.get("admissions", {})
+        payload_ledger = payload.get("sourceLedger") if isinstance(payload.get("sourceLedger"), dict) else None
         output = {
             "school": compact_school_report(school),
             "vacancies": normalize_vacancy_payload(vacancies),
             "admissions": normalize_admission_payload(admissions),
-            "sourceLedger": source_ledger,
+            "sourceLedger": payload_ledger or source_ledger,
             "notes": SOURCE_NOTES,
             "studentProfile": payload.get("studentProfile") or {},
         }
-        add_school_level_sources(source_ledger, school if isinstance(school, dict) else {})
+        if payload_ledger is None:
+            add_school_level_sources(source_ledger, school if isinstance(school, dict) else {})
         output["nextActions"] = build_school_report_next_actions(output)
         output["checklist"] = build_school_report_checklist(output)
         output["llmBrief"] = build_school_report_llm_brief(output)
@@ -1757,12 +1797,20 @@ def compact_admission_summary(summary: dict[str, Any] | None) -> dict[str, Any] 
 def compact_advisor_search(payload: dict[str, Any]) -> dict[str, Any]:
     search = compact_output("search-schools", payload.get("search", {}))
     intent = payload.get("intent", "search")
+    source_ledger = payload.get("sourceLedger") if isinstance(payload.get("sourceLedger"), dict) else search.get("sourceLedger") or build_source_ledger()
     recommendation_raw = payload.get("recommendation")
     recommendation = compact_output("recommend", recommendation_raw) if recommendation_raw else None
     compare_payload = payload.get("compare")
     compare_output = compact_output("compare", compare_payload) if compare_payload else None
     detail_payload = payload.get("schoolDetail")
-    detail_output = {"school": compact_school_detail(detail_payload)} if detail_payload else None
+    detail_output = None
+    if isinstance(detail_payload, dict):
+        detail_school = detail_payload.get("school") if isinstance(detail_payload.get("school"), dict) else detail_payload
+        detail_output = {
+            "school": compact_school_detail(detail_school),
+            "vacancySummary": compact_vacancy_summary(detail_payload.get("vacancySummary")),
+            "admissionNoticeSummary": compact_admission_summary(detail_payload.get("admissionNoticeSummary")),
+        }
     report_payload = payload.get("admissionAndVacancy")
     report_output = None
     if isinstance(report_payload, dict):
@@ -1776,17 +1824,23 @@ def compact_advisor_search(payload: dict[str, Any]) -> dict[str, Any]:
         "query": payload.get("query"),
         "filters": payload.get("filters") or {},
         "intent": intent,
+        "parentQuestion": payload.get("parentQuestion"),
         "schoolfitUrl": DEFAULT_BASE_URL,
         "search": search,
         "compare": compare_output,
         "schoolDetail": detail_output,
         "admissionAndVacancy": report_output,
+        "decisionBriefs": payload.get("decisionBriefs") or [],
         "recommendation": recommendation,
         "nextActions": build_next_actions(search, recommendation),
         "notes": SOURCE_NOTES,
-        "sourceLedger": search.get("sourceLedger") or build_source_ledger(),
+        "sourceLedger": source_ledger,
+        "apiLlmBrief": payload.get("llmBrief") if isinstance(payload.get("llmBrief"), dict) else {},
     }
+    if output["decisionBriefs"]:
+        output["nextActions"].append("如要單校深挖，優先使用 decisionBriefApiUrl 或 decision-brief 命令取得單校決策摘要。")
     output["llmBrief"] = build_advisor_llm_brief(output)
+    output.pop("apiLlmBrief", None)
     return output
 
 
@@ -2107,6 +2161,9 @@ def build_advisor_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
     search_brief = (output.get("search") or {}).get("llmBrief", {})
     recommendation = output.get("recommendation")
     recommend_brief = recommendation.get("llmBrief") if isinstance(recommendation, dict) else None
+    api_brief = output.get("apiLlmBrief") if isinstance(output.get("apiLlmBrief"), dict) else {}
+    parent_question = output.get("parentQuestion") if isinstance(output.get("parentQuestion"), dict) else {}
+    answer_blueprint = api_brief.get("answerBlueprint")
     return {
         **standard_llm_brief(
             "advisor-search",
@@ -2121,6 +2178,8 @@ def build_advisor_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
                 "searchHighlights": search_brief.get("highlights", []),
                 "recommendationHighlights": recommend_brief.get("topRecommendations", []) if recommend_brief else [],
                 "nextActions": output.get("nextActions", []),
+                "parentQuestion": parent_question,
+                "answerBlueprint": answer_blueprint,
             },
         ),
         "purpose": "Write the final answer for a parent after SchoolFit HK search and optional recommendation.",
@@ -2133,6 +2192,9 @@ def build_advisor_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
         "intent": output.get("intent", "search"),
         "searchHighlights": search_brief.get("highlights", []),
         "recommendationHighlights": recommend_brief.get("topRecommendations", []) if recommend_brief else [],
+        "serverHighlights": api_brief.get("highlights", []),
+        "answerBlueprint": answer_blueprint,
+        "parentQuestion": parent_question,
         "nextActions": output.get("nextActions", []),
         "sourceLedger": output.get("sourceLedger", {}),
         "answerTemplate": "1. 先用一句話回答最適合先看哪幾間；2. 分 Safe/Match/Reach 或先看/備選列 3-6 間；3. 每間一句原因和 SchoolFit HK 連結；4. 最後給 2-3 個下一步。",
@@ -2176,6 +2238,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
     if data.get("needsActivation"):
         print("## 需要先啟用 SchoolFit HK Skill\n")
         print("請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit 授權碼，複製後直接發到這個聊天窗口。")
+        print("\n如果打開後找不到頁面，請確認網址只保留到 `/skill-code`，刪除後面的 `?`、`#` 或其他字串。")
         print("\n我收到後就可以幫你查學校、比較、做推薦和申請計劃。")
         print("\n### 你可以這樣發")
         print("```text")
@@ -2345,9 +2408,9 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
                         print(f"- {key}: {compare_summary[key]}")
         print_caveats()
         return
-    if command == "school-report":
+    if command in {"decision-brief", "school-report"}:
         school = data.get("school") or {}
-        print("## SchoolFit HK 單校決策報告")
+        print("## SchoolFit HK 單校決策摘要")
         print(f"學校: {school.get('nameZh') or school.get('nameEn') or school.get('slug')}  \n學區: {school.get('district') or '未知'}")
         print(f"Band 參考: {school.get('bandingReference') or '暫無可靠資料'}  \n學費: {school.get('annualTuitionHkd') or '暫無可靠資料'}")
         print(f"官方/資料入口: {school.get('schoolfitUrl')}\n")
@@ -2479,7 +2542,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_recommendation_filters(advisor)
     advisor.add_argument("--intent", choices=["auto", "search", "compare", "vacancy", "admissions", "detail", "recommend", "report", "plan"], default="auto")
     advisor.add_argument("--no-recommend", action="store_true", help="Do not call the recommendation endpoint.")
-    advisor.add_argument("--include-decision-brief", action="store_true", help="Deprecated: kept for forward-compatible clients.")
+    advisor.add_argument("--include-decision-brief", action="store_true", help="Ask advisor-search to include decisionBriefApiUrl pointers for top schools.")
 
     setup_code = sub.add_parser("setup-code", help="Save authorization code to config and activate it.")
     add_output_options(setup_code)
@@ -2503,7 +2566,12 @@ def build_parser() -> argparse.ArgumentParser:
     deep_compare.add_argument("ids", help="Comma-separated school ids/slugs.")
     deep_compare.add_argument("--include-detail", action="store_true", help="Call school detail for each school when available.")
 
-    report = sub.add_parser("school-report", help="Generate a parent decision report for one school.")
+    decision_brief = sub.add_parser("decision-brief", help="Get the compact SchoolFit parent decision brief for one school.")
+    add_output_options(decision_brief)
+    decision_brief.add_argument("slug", help="School slug from SchoolFit HK.")
+    decision_brief.add_argument("--student-profile-json", help="Optional JSON object for student profile context.")
+
+    report = sub.add_parser("school-report", help="Generate a parent decision report for one school. Compatibility alias for decision-brief.")
     add_output_options(report)
     report.add_argument("slug", help="School slug from SchoolFit HK.")
     report.add_argument("--student-profile-json", help="Optional JSON object for student profile context.")
@@ -2537,7 +2605,7 @@ def build_parser() -> argparse.ArgumentParser:
     vacancies.add_argument("--grade", choices=["S1", "S2", "S3", "S4", "S5", "S6"])
     vacancies.add_argument("--status")
     vacancies.add_argument("--source-type")
-    vacancies.add_argument("--has-vacancy", type=as_bool)
+    vacancies.add_argument("--has-vacancy", nargs="?", const="true", type=as_bool)
     vacancies.add_argument("--q")
     vacancies.add_argument("--page", type=int)
     vacancies.add_argument("--page-size", type=int, default=100)
@@ -2564,6 +2632,7 @@ def add_output_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--audit-data", dest="audit_data", action="store_true", default=None)
     parser.add_argument("--no-audit-data", dest="audit_data", action="store_false")
     parser.add_argument("--boarding", action="store_true", help="Hint that user is looking for boarding-capable schools.")
+    parser.add_argument("--verbose", action="store_true", help="Ask SchoolFit Skill APIs for raw vacancy/admission arrays and full source ledgers.")
 
 
 def add_common_filters(parser: argparse.ArgumentParser) -> None:
@@ -2577,7 +2646,7 @@ def add_common_filters(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--max-tuition", type=float)
     parser.add_argument("--vacancy-grade", choices=["S1", "S2", "S3", "S4", "S5", "S6"])
     parser.add_argument("--vacancy-status")
-    parser.add_argument("--has-vacancy", type=as_bool)
+    parser.add_argument("--has-vacancy", nargs="?", const="true", type=as_bool)
     parser.add_argument("--page", type=int)
     parser.add_argument("--page-size", type=int, default=24)
 
@@ -2587,6 +2656,7 @@ def add_recommendation_filters(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--language-priority")
     parser.add_argument("--support-needs", nargs="*")
     parser.add_argument("--accepts-dss", type=as_bool)
+    parser.add_argument("--no-dss", dest="accepts_dss", action="store_false", help="Shortcut for --accepts-dss false.")
     parser.add_argument("--commute-minutes", type=float)
     parser.add_argument("--personality")
     parser.add_argument("--priorities", nargs="*")
@@ -2659,7 +2729,7 @@ def advisory_search_params(args: argparse.Namespace) -> dict[str, Any]:
         "includeDecisionBrief": getattr(args, "include_decision_brief", None),
         "hasBoarding": has_boarding,
         "auditData": audit_data,
-        "verbose": True,
+        "verbose": True if getattr(args, "verbose", False) else None,
     }
 
 
@@ -2975,14 +3045,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "page": args.page,
             "pageSize": args.page_size,
         })
-    elif command == "school-report":
+    elif command in {"decision-brief", "school-report"}:
         slug = urllib.parse.quote(args.slug.strip(), safe="")
-        school_decision_payload = api("GET", f"/api/skill/schools/{slug}/decision-brief", params={"verbose": True})
+        school_decision_payload = api(
+            "GET",
+            f"/api/skill/schools/{slug}/decision-brief",
+            params={"verbose": True if getattr(args, "verbose", False) else None},
+        )
         student_profile = sanitize_student_profile(read_json_arg(getattr(args, "student_profile_json", None)))
         school_payload = (school_decision_payload or {}).get("school", {}) if isinstance(school_decision_payload, dict) else {}
         vacancy_payload = (school_decision_payload or {}).get("vacancy", {}) if isinstance(school_decision_payload, dict) else {}
         admissions_payload = (school_decision_payload or {}).get("admission", {}) if isinstance(school_decision_payload, dict) else {}
         payload = {
+            "mode": (school_decision_payload or {}).get("mode") if isinstance(school_decision_payload, dict) else None,
             "school": {
                 **school_payload,
                 "vacancySummary": (vacancy_payload.get("summary") or {}),
@@ -2990,6 +3065,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             },
             "vacancies": vacancy_payload or {},
             "admissions": admissions_payload or {},
+            "sourceLedger": (school_decision_payload or {}).get("sourceLedger") if isinstance(school_decision_payload, dict) else None,
             "studentProfile": student_profile,
         }
     elif command == "application-plan":

@@ -17,3 +17,5 @@ Answer style:
 - Explain the main differences first.
 - Separate school facts, third-party Band reference, admissions and vacancy signals.
 - End with a short next-step checklist.
+- When the parent is close to choosing one school, suggest `decision-brief <slug>` for that school before drafting an application plan.
+- Do not infer a winner from Band alone; include fit, commute, admissions risk, and family constraints.

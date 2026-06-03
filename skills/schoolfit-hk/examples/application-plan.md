@@ -16,4 +16,6 @@ Answer style:
 
 - Turn returned timeline into a practical family checklist.
 - Include documents, deadline confirmation, interview preparation and school follow-up reminders.
+- If the family has not chosen between schools yet, run `decision-brief` or `deep-compare` first and only then produce the plan.
+- Keep source and deadline caveats from the API response visible; do not treat vacancy or admissions signals as guaranteed outcomes.
 - Do not ask for HKID, phone, address, full name or report-card PDF in the chat.

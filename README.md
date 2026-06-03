@@ -1,17 +1,19 @@
-# SchoolFit HK Skill for OpenClaw (v1.0.12)
+# SchoolFit HK Skill for OpenClaw (v1.0.14)
 
 OpenClaw / ArkAgent / Claude Code compatible skill for Hong Kong secondary-school selection using the public [SchoolFit HK](https://schoolfit.hk) API.
 
 The skill wraps SchoolFit HK features for:
 
 - smart advisor search with model-polishable briefs and intent routing
+- parent-query understanding with answer blueprints from the live Skill API
 - school search and detail lookup
 - school comparison
+- compact single-school decision briefs
 - Safe / Match / Reach recommendation buckets
 - EDB vacancy records
 - school admission notices
 - deep compare
-- single-school decision reports
+- single-school decision reports through the SchoolFit decision-brief API
 - practical application planning output
 - application plan with deadline reminders and parent checklist
 - fuzzy school-name resolution
@@ -60,12 +62,15 @@ After installation, the Agent should first say:
 
 When the user pastes `sfhk_...`, the Agent keeps that code only in the active chat context and passes it to future helper calls as `--skill-code`. Do not write real user codes to files, logs, examples, commits, or marketplace material.
 
+Always show the authorization page as exactly `https://schoolfit.hk/skill-code`. If a copied link has `?`, `#`, tracking strings, or any path suffix after `/skill-code`, strip it back to the canonical URL before opening.
+
 ## Safety Model
 
 - Calls only `https://schoolfit.hk/api/...`.
 - Does not read local Edu databases, Prisma files, raw data snapshots, cookies, or `.env` files.
 - Rejects non-`schoolfit.hk` base URLs.
 - First run asks the user to open `https://schoolfit.hk/skill-code`, generate a trial code, copy it, and paste it back into the same chat window for the Agent.
+- Authorization-link handling is strict: only `https://schoolfit.hk/skill-code` is canonical; decorated links should be cleaned before use.
 - Sends `X-SchoolFit-Skill-Code`, `X-SchoolFit-Skill-Version`, and trace metadata for activation and anonymous telemetry. The code is not a payment token or student identity.
 - Keeps official facts, third-party Band references, community summaries, vacancies, and admissions notices separate.
 - Blocks obvious HKID, phone, and email input before API calls, and asks the user to remove sensitive data.
@@ -88,12 +93,17 @@ python3 skills/schoolfit-hk/scripts/schoolfit_api.py self-check --format markdow
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py search-schools --q "沙田 Band 1 英文 男女校" --page-size 5 --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py resolve-school --name "SPCC" --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py shortlist-builder --q "沙田 Band 1 英文 男女校，想穩陣" --format markdown
-python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --q "沙田 Band 1 英文 男女校" --district "沙田區" --banding "Band 1" --page-size 5 --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --q "沙田 Band 1 英文 男女校，重視校風，不考慮直資" --district "沙田區" --banding "Band 1" --no-dss --include-decision-brief --page-size 5 --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py deep-compare sha-tin-methodist-college,ying-wa-girls-school --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py decision-brief sha-tin-methodist-college --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py vacancies --grade S1 --has-vacancy true --page-size 5 --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py school-report sha-tin-methodist-college --format markdown
 python3 -m unittest discover -s tests
 ```
+
+Use compact Skill API payloads by default. Add `--verbose` only when a tester or agent explicitly needs raw vacancy/admission arrays, full source ledgers, or audit evidence.
+
+For parent advisory flows, preserve `parentQuestion` and `llmBrief.answerBlueprint` from `advisor-search`; they are the live API's current understanding of the family's priorities, missing information and recommended answer shape.
 
 ## Marketplace Summary
 

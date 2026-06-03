@@ -125,6 +125,69 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertEqual(request.call_args_list[1].kwargs["params"]["routingMode"], "broad")
         self.assertEqual(output["search"]["schools"][0]["slug"], "fallback-school")
 
+    def test_advisor_search_preserves_decision_briefs_parent_question_and_api_source_ledger(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "advisor-search",
+            "--q",
+            "九龍城 Band 1 女校",
+            "--include-decision-brief",
+            "--format",
+            "json",
+        ])
+        payload = {
+            "search": {"count": 1, "schools": [{"slug": "school-a", "nameZh": "甲中學"}]},
+            "intent": "search",
+            "decisionBriefs": [{
+                "school": {"slug": "school-a", "nameZh": "甲中學"},
+                "links": {"decisionBriefApiUrl": "https://schoolfit.hk/api/skill/schools/school-a/decision-brief"},
+            }],
+            "parentQuestion": {
+                "language": "zh-Hant",
+                "detectedSignals": {"district": "九龍城區", "banding": "Band 1", "gender": "女校"},
+                "answerStrategy": {
+                    "primaryIntent": "recommend",
+                    "rankedCriteria": ["地區與通勤可行性", "教學語言"],
+                    "responseShape": "shortlist",
+                    "missingInfo": ["孩子最近呈分"],
+                },
+                "quality": {"specificity": "high", "confidence": "high", "warnings": []},
+            },
+            "llmBrief": {
+                "answerBlueprint": {
+                    "lead": "先按九龍城 Band 1 女校收窄。",
+                    "evidenceOrder": ["地區與通勤可行性", "教學語言"],
+                    "missingInfo": ["孩子最近呈分"],
+                    "responseShape": "shortlist",
+                }
+            },
+            "sourceLedger": {"officialFacts": [{"name": "SchoolFit HK API"}], "assumptions": ["compact api"]},
+        }
+        with mock.patch.object(schoolfit_api, "request_json", return_value=payload) as request:
+            output = schoolfit_api.run(args)
+        advisor_params = request.call_args_list[0].kwargs["params"]
+        self.assertTrue(advisor_params["includeDecisionBrief"])
+        self.assertEqual(output["decisionBriefs"][0]["school"]["slug"], "school-a")
+        self.assertEqual(output["parentQuestion"]["answerStrategy"]["responseShape"], "shortlist")
+        self.assertEqual(output["llmBrief"]["answerBlueprint"]["lead"], "先按九龍城 Band 1 女校收窄。")
+        self.assertEqual(output["sourceLedger"]["assumptions"], ["compact api"])
+        self.assertIn("decision-brief", output["nextActions"][-1])
+
+    def test_advisor_search_supports_no_dss_and_flag_has_vacancy(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "advisor-search",
+            "--q",
+            "沙田 Band 1 英文校",
+            "--no-dss",
+            "--has-vacancy",
+            "--format",
+            "json",
+        ])
+        with mock.patch.object(schoolfit_api, "request_json", return_value={"search": {"count": 0, "schools": []}}) as request:
+            schoolfit_api.run(args)
+        params = request.call_args_list[0].kwargs["params"]
+        self.assertFalse(params["acceptsDss"])
+        self.assertTrue(params["hasVacancy"])
+
     def test_advisor_search_broad_mode_relaxes_restrictive_filters(self):
         args = schoolfit_api.build_parser().parse_args([
             "advisor-search",
@@ -211,8 +274,21 @@ class SchoolFitApiTests(unittest.TestCase):
             output = schoolfit_api.run(args)
         self.assertEqual(request.call_count, 1)
         self.assertTrue(request.call_args.kwargs["params"]["auditData"])
-        self.assertTrue(request.call_args.kwargs["params"]["verbose"])
+        self.assertIsNone(request.call_args.kwargs["params"]["verbose"])
         self.assertEqual(output["admissionAndVacancy"]["audit"]["checkedAt"], "2026-05-22T00:00:00.000Z")
+
+    def test_advisor_search_verbose_can_request_full_payload(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "advisor-search",
+            "--q",
+            "中三 名校",
+            "--intent",
+            "vacancy",
+            "--verbose",
+        ])
+        with mock.patch.object(schoolfit_api, "request_json", return_value={"search": {"count": 0, "schools": []}}) as request:
+            schoolfit_api.run(args)
+        self.assertTrue(request.call_args.kwargs["params"]["verbose"])
 
     def test_advisor_search_routes_boarding_query_as_structured_filter(self):
         args = schoolfit_api.build_parser().parse_args([
@@ -249,7 +325,7 @@ class SchoolFitApiTests(unittest.TestCase):
         params = request.call_args.kwargs["params"]
         self.assertEqual(params["intent"], "vacancy")
         self.assertTrue(params["auditData"])
-        self.assertTrue(params["verbose"])
+        self.assertIsNone(params["verbose"])
 
     def test_advisor_search_can_disable_auto_audit(self):
         args = schoolfit_api.build_parser().parse_args([
@@ -575,10 +651,32 @@ class SchoolFitApiTests(unittest.TestCase):
         ]) as request:
             output = schoolfit_api.run(args)
         self.assertEqual(request.call_count, 1)
-        self.assertTrue(request.call_args.kwargs["params"]["verbose"])
+        self.assertIsNone(request.call_args.kwargs["params"]["verbose"])
         self.assertEqual(output["school"]["slug"], "sha-tin-methodist-college")
         self.assertEqual(output["school"]["schoolfitUrl"], "https://schoolfit.hk/schools/sha-tin-methodist-college")
         self.assertIn("sourceLedger", output)
+
+    def test_decision_brief_uses_skill_decision_endpoint_and_can_be_verbose(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "decision-brief",
+            "sha-tin-methodist-college",
+            "--verbose",
+            "--format",
+            "json",
+        ])
+        with mock.patch.object(schoolfit_api, "request_json", return_value={
+            "sourceLedger": {"officialFacts": [], "assumptions": ["api"]},
+            "school": {"slug": "sha-tin-methodist-college", "nameZh": "沙田中學"},
+            "vacancy": {"summary": {"dataMonth": "2026-05"}, "count": 0},
+            "admission": {"summary": {"nextDeadline": "2026-06-01"}, "count": 0},
+        }) as request:
+            output = schoolfit_api.run(args)
+        self.assertEqual(request.call_args.args[2], "/api/skill/schools/sha-tin-methodist-college/decision-brief")
+        self.assertTrue(request.call_args.kwargs["params"]["verbose"])
+        self.assertEqual(output["school"]["slug"], "sha-tin-methodist-college")
+        self.assertEqual(output["sourceLedger"]["assumptions"], ["api"])
 
     def test_application_plan_contains_timeline(self):
         args = schoolfit_api.build_parser().parse_args([
@@ -633,6 +731,21 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertFalse(request.called)
         self.assertTrue(output["needsActivation"])
         self.assertEqual(output["activationUrl"], "https://schoolfit.hk/skill-code")
+        self.assertEqual(output["activationUrlPolicy"]["canonicalUrl"], "https://schoolfit.hk/skill-code")
+
+    def test_activation_url_is_canonicalized_when_suffix_is_added(self):
+        decorated_urls = [
+            "https://schoolfit.hk/skill-code?utm_source=agent",
+            "https://schoolfit.hk/skill-code#openclaw",
+            "https://schoolfit.hk/skill-code/sfhk_extra",
+            "https://schoolfit.hk/skill-code?next=/missing#x",
+        ]
+        for url in decorated_urls:
+            with self.subTest(url=url):
+                self.assertEqual(
+                    schoolfit_api.canonical_activation_url(url),
+                    "https://schoolfit.hk/skill-code",
+                )
 
     def test_quick_start_does_not_call_api(self):
         args = schoolfit_api.build_parser().parse_args([
@@ -645,6 +758,8 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertFalse(request.called)
         self.assertEqual(output["activationStatus"], "not_required")
         self.assertIn("skill-code", output["steps"][0]["text"])
+        self.assertEqual(output["activationUrlPolicy"]["canonicalUrl"], "https://schoolfit.hk/skill-code")
+        self.assertIn("/skill-code", output["steps"][0]["note"])
 
     def test_parse_parent_request_extracts_local_filters(self):
         args = schoolfit_api.build_parser().parse_args([
@@ -814,6 +929,20 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertEqual(request.call_args.args[2], "/api/schools")
         self.assertEqual(request.call_args.kwargs["params"]["q"], "St. Paul's Co-educational College")
         self.assertEqual(output["candidates"][0]["slug"], "st-pauls-co-educational-college")
+        self.assertIn("decision-brief", output["nextActions"][0])
+
+    def test_vacancies_accepts_flag_style_has_vacancy(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "vacancies",
+            "--grade",
+            "S1",
+            "--has-vacancy",
+        ])
+        with mock.patch.object(schoolfit_api, "request_json", return_value={"count": 0, "vacancies": []}) as request:
+            schoolfit_api.run(args)
+        self.assertTrue(request.call_args.kwargs["params"]["hasVacancy"])
 
     def test_shortlist_builder_buckets_results(self):
         args = schoolfit_api.build_parser().parse_args([

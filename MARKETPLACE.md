@@ -36,7 +36,7 @@ Search, compare, and recommend Hong Kong secondary schools using SchoolFit HK pu
 
 ## Long Description
 
-SchoolFit HK helps OpenClaw, CowAgent, Claude Code, and compatible agents support Hong Kong secondary-school selection workflows. It can run smart advisor search with intent-aware routing, robust district fallback search, resolve fuzzy school names and Hong Kong school acronyms, inspect school details, compare shortlists, deep-compare, produce Safe / Match / Reach recommendation buckets, generate 首選/穩陣/備選 shortlist buckets with stricter English-environment and district ranking, generate single-school reports, build practical application plans, retrieve EDB vacancy records/admission notices, and handle Traditional Chinese, Simplified Chinese, or English parent prompts while matching the answer language.
+SchoolFit HK helps OpenClaw, CowAgent, Claude Code, and compatible agents support Hong Kong secondary-school selection workflows. It can run smart advisor search with intent-aware routing, live parent-query understanding, answer blueprints, robust district fallback search, resolve fuzzy school names and Hong Kong school acronyms, inspect school details, compare shortlists, deep-compare, produce Safe / Match / Reach recommendation buckets, generate 首選/穩陣/備選 shortlist buckets with stricter English-environment and district ranking, generate compact single-school decision briefs, build practical application plans, retrieve EDB vacancy records/admission notices, and handle Traditional Chinese, Simplified Chinese, or English parent prompts while matching the answer language.
 
 The skill uses only the public `https://schoolfit.hk/api/...` surface. It does not read local databases, Prisma schemas, `.env` files, cookies, private Edu project snapshots, or raw school data dumps.
 
@@ -51,6 +51,7 @@ education, hong-kong, school-selection, secondary-school, admissions, vacancies,
 - Host allowlist is restricted to `schoolfit.hk`.
 - The helper rejects custom schemes, credentials, custom ports, and non-API paths.
 - First use guides the user to `https://schoolfit.hk/skill-code` to generate a trial activation code, then paste it back into the same chat window for the Agent.
+- Authorization page links must be normalized to exactly `https://schoolfit.hk/skill-code`; strip query strings, hash fragments, tracking strings, and path suffixes before opening.
 - The `X-SchoolFit-Skill-Code` header supports activation, rate limiting and anonymous telemetry; it is not a payment token or student identity.
 - The v1 skill does not call `/api/agent/chat` to avoid LLM cost and persistent session creation.
 - The skill keeps official facts, third-party Band references, community summaries, vacancy signals, and admission notices separated.
@@ -71,7 +72,7 @@ ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 
 - Slug: `schoolfit-hk`
 - Owner: `djanngau`
-- Version: `1.0.12`
+- Version: `1.0.14`
 - Moderation: `CLEAN`
 
 ## Smoke Test
@@ -84,8 +85,9 @@ python3 skills/schoolfit-hk/scripts/schoolfit_api.py self-check --format markdow
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py search-schools --q "沙田 Band 1 英文 男女校" --page-size 5 --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py resolve-school --name "SPCC" --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py shortlist-builder --q "沙田 Band 1 英文 男女校，想穩陣" --format markdown
-python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --q "沙田 Band 1 英文 男女校" --district "沙田區" --banding "Band 1" --page-size 5 --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --q "沙田 Band 1 英文 男女校，重視校風，不考慮直資" --district "沙田區" --banding "Band 1" --no-dss --include-decision-brief --page-size 5 --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py deep-compare sha-tin-methodist-college,ying-wa-girls-school --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py decision-brief sha-tin-methodist-college --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py vacancies --grade S1 --has-vacancy true --page-size 5 --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py school-report sha-tin-methodist-college --format markdown
 python3 -m unittest discover -s tests

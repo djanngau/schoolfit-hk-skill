@@ -17,8 +17,25 @@ Pre-release checks:
 python3 -m py_compile skills/schoolfit-hk/scripts/schoolfit_api.py
 python3 -m unittest discover -s tests
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py self-check --format json
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py quick-start --format json
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py metadata --skill-code schoolfit-openclaw-v1-reserved --format json
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --skill-code schoolfit-openclaw-v1-reserved --q "沙田 Band 1 英文 男女校，重視校風，不考慮直資" --intent recommend --no-dss --include-decision-brief --page-size 5 --format json
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py decision-brief sha-tin-methodist-college --skill-code schoolfit-openclaw-v1-reserved --format json
+git diff --check
 ```
+
+Release readiness:
+
+- Confirm `skillVersion` in `self-check` matches `skills/schoolfit-hk/SKILL.md`,
+  `README.md`, and `MARKETPLACE.md`.
+- Confirm `quick-start` returns the canonical activation URL
+  `https://schoolfit.hk/skill-code` and a policy that strips query strings, hash
+  fragments, tracking text, and accidental suffixes.
+- Confirm live `advisor-search` can return `parentQuestion`,
+  `llmBrief.answerBlueprint`, `sourceLedger`, and decision-brief links when the
+  SchoolFit service exposes them.
+- Confirm `decision-brief` works for a known slug before publishing updated
+  examples or marketplace text.
 
 Live coordination:
 
