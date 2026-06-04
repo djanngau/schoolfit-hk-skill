@@ -32,18 +32,18 @@ djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 
 ## Short Description
 
-Search, compare, and recommend Hong Kong secondary schools using SchoolFit HK public APIs, with conservative source labeling for official facts, Band references, EDB vacancy data, and admission notices.
+Search, compare, and recommend Hong Kong schools across secondary, primary, kindergarten, international, and postsecondary SchoolFit HK public APIs, with conservative source labeling for official facts, Band references where applicable, vacancy data, and admission notices.
 
 ## Long Description
 
-SchoolFit HK helps OpenClaw, CowAgent, Claude Code, and compatible agents support Hong Kong secondary-school selection workflows. It can run smart advisor search with intent-aware routing, live parent-query understanding, answer blueprints, robust district fallback search, resolve fuzzy school names and Hong Kong school acronyms, inspect school details, compare shortlists, deep-compare, produce Safe / Match / Reach recommendation buckets, generate 首選/穩陣/備選 shortlist buckets with stricter English-environment and district ranking, generate compact single-school decision briefs, build practical application plans, retrieve EDB vacancy records/admission notices, and handle Traditional Chinese, Simplified Chinese, or English parent prompts while matching the answer language.
+SchoolFit HK helps OpenClaw, CowAgent, Claude Code, and compatible agents support Hong Kong school-selection workflows across 中學資料庫, 小學資料庫, 幼稚園資料庫, 國際學校資料庫, and 專上教育庫. It can run smart advisor search with intent-aware routing, live parent-query understanding, answer blueprints, robust district fallback search, resolve fuzzy school names and Hong Kong school acronyms, inspect school details, compare shortlists, deep-compare, produce Safe / Match / Reach recommendation buckets where applicable, generate 首選/穩陣/備選 shortlist buckets with stricter English-environment and district ranking, generate compact single-school decision briefs, build practical application plans, retrieve vacancy records/admission notices, and handle Traditional Chinese, Simplified Chinese, or English parent prompts while matching the answer language.
 
 The skill uses only the public `https://schoolfit.hk/api/...` surface. It does not read local databases, Prisma schemas, `.env` files, cookies, private Edu project snapshots, or raw school data dumps.
 
 ## Tags
 
 ```text
-education, hong-kong, school-selection, secondary-school, admissions, vacancies, schoolfit, openclaw, arkagent, claude-code
+education, hong-kong, school-selection, secondary-school, primary-school, kindergarten, international-school, postsecondary, admissions, vacancies, schoolfit, openclaw, arkagent, claude-code
 ```
 
 ## Security Notes
@@ -54,7 +54,7 @@ education, hong-kong, school-selection, secondary-school, admissions, vacancies,
 - Authorization page links must be normalized to exactly `https://schoolfit.hk/skill-code`; strip query strings, hash fragments, tracking strings, and path suffixes before opening.
 - The `X-SchoolFit-Skill-Code` header supports activation, rate limiting and anonymous telemetry; it is not a payment token or student identity.
 - The v1 skill does not call `/api/agent/chat` to avoid LLM cost and persistent session creation.
-- The skill keeps official facts, third-party Band references, community summaries, vacancy signals, and admission notices separated.
+- The skill keeps official facts, third-party Band references where applicable, community summaries, vacancy signals, and admission notices separated.
 
 ## Suggested Marketplace Commands
 
@@ -72,7 +72,7 @@ ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 
 - Slug: `schoolfit-hk`
 - Owner: `djanngau`
-- Version: `1.0.14`
+- Version: `1.0.15`
 - Moderation: `CLEAN`
 
 ## Smoke Test
@@ -80,9 +80,13 @@ ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 ```bash
 export SCHOOLFIT_SKILL_CODE="PASTE_CODE_FROM_https://schoolfit.hk/skill-code"
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py quick-start --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py school-levels --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py parse-parent-request --q "九龍城 Band 1 女校 英文環境 唔要直資 想穩陣" --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py self-check --format markdown
-python3 skills/schoolfit-hk/scripts/schoolfit_api.py search-schools --q "沙田 Band 1 英文 男女校" --page-size 5 --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py search-schools --level secondary --q "沙田 Band 1 英文 男女校" --page-size 5 --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py search-schools --level primary --q "九龍城 小學 英文環境" --page-size 5 --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --level international --q "港島 國際學校 IB A-Level" --page-size 5 --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --level postsecondary --q "JUPAS HD 副學士 銜接" --page-size 5 --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py resolve-school --name "SPCC" --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py shortlist-builder --q "沙田 Band 1 英文 男女校，想穩陣" --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --q "沙田 Band 1 英文 男女校，重視校風，不考慮直資" --district "沙田區" --banding "Band 1" --no-dss --include-decision-brief --page-size 5 --format markdown

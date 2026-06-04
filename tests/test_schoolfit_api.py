@@ -3,6 +3,8 @@ import pathlib
 import tempfile
 import unittest
 from unittest import mock
+from io import StringIO
+from contextlib import redirect_stdout
 
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "skills" / "schoolfit-hk" / "scripts" / "schoolfit_api.py"
@@ -543,6 +545,18 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertEqual(policy["fallbackOrder"], ["ClawHub", "skills.sh", "GitHub"])
         self.assertIn("clawhub install schoolfit-hk", policy["installCommands"])
 
+    def test_school_levels_is_public_and_lists_all_databases(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "school-levels",
+            "--format",
+            "json",
+        ])
+        output = schoolfit_api.run(args)
+        levels = output["coverage"]["levels"]
+        self.assertEqual([item["level"] for item in levels], list(schoolfit_api.SCHOOL_LEVELS))
+        self.assertEqual(output["coverage"]["total"], sum(schoolfit_api.SCHOOL_LEVEL_COUNTS.values()))
+        self.assertEqual(output["activationStatus"], "not_required")
+
     def test_deep_compare_limits_ids_to_four(self):
         args = schoolfit_api.build_parser().parse_args([
             "--skill-code",
@@ -760,6 +774,8 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertIn("skill-code", output["steps"][0]["text"])
         self.assertEqual(output["activationUrlPolicy"]["canonicalUrl"], "https://schoolfit.hk/skill-code")
         self.assertIn("/skill-code", output["steps"][0]["note"])
+        self.assertIn("friendlyOpening", output)
+        self.assertEqual(output["interactionStyle"]["tone"], "warm, concise, parent-friendly, and evidence-conscious")
 
     def test_parse_parent_request_extracts_local_filters(self):
         args = schoolfit_api.build_parser().parse_args([
@@ -801,6 +817,41 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertEqual(output["recommendationSignals"]["riskPreference"], "conservative")
         self.assertEqual(output["filters"]["vacancyGrade"], "S1")
 
+    def test_parse_parent_request_detects_school_levels(self):
+        cases = [
+            ("九龍城 小學 英文環境", "primary"),
+            ("荃灣幼稚園 K1", "kindergarten"),
+            ("港島 國際學校 IB A-Level", "international"),
+            ("JUPAS HD 副學士 銜接 專上", "postsecondary"),
+        ]
+        for text, expected in cases:
+            with self.subTest(text=text):
+                output = schoolfit_api.parse_parent_request_text(text)
+                self.assertEqual(output["filters"]["level"], expected)
+                self.assertEqual(output["recommendationSignals"]["level"], expected)
+
+    def test_parse_parent_request_detects_region_without_fake_district(self):
+        output = schoolfit_api.parse_parent_request_text("港島 國際學校 IB A-Level")
+        self.assertEqual(output["filters"]["level"], "international")
+        self.assertEqual(output["filters"]["region"], "港島")
+        self.assertNotIn("district", output["filters"])
+        self.assertNotIn("主要想看哪個區", "\n".join(output["missingInfoQuestions"]))
+        self.assertIn("friendlySummary", output)
+        self.assertIn("friendlyFollowUp", output)
+        self.assertIn("國際學校資料庫", "\n".join(output["friendlySummary"]))
+
+    def test_parse_parent_request_markdown_is_parent_friendly(self):
+        output = schoolfit_api.parse_parent_request_text("港島 國際學校 IB A-Level")
+        buffer = StringIO()
+        with redirect_stdout(buffer):
+            schoolfit_api.print_markdown("parse-parent-request", output)
+        rendered = buffer.getvalue()
+        self.assertIn("我先幫你整理到這裡", rendered)
+        self.assertIn("資料庫: 國際學校資料庫", rendered)
+        self.assertIn("不用提供姓名", rendered)
+        self.assertNotIn("zh-Hant", rendered)
+        self.assertNotIn("資料庫名稱", rendered)
+
     def test_advisor_search_applies_parsed_filters(self):
         args = schoolfit_api.build_parser().parse_args([
             "--skill-code",
@@ -817,6 +868,22 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertEqual(params["banding"], "Band 1")
         self.assertEqual(params["medium"], "英文")
         self.assertEqual(params["gender"], "男女校")
+
+    def test_advisor_search_applies_parsed_primary_level(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "advisor-search",
+            "--q",
+            "九龍城 小學 英文環境",
+            "--no-recommend",
+        ])
+        with mock.patch.object(schoolfit_api, "request_json", return_value={"search": {"count": 0, "schools": []}}) as request:
+            schoolfit_api.run(args)
+        params = request.call_args_list[0].kwargs["params"]
+        self.assertEqual(params["level"], "primary")
+        self.assertEqual(params["district"], "九龍城區")
+        self.assertEqual(params["medium"], "英文")
 
     def test_search_schools_parses_district_and_runs_robust_fallback(self):
         args = schoolfit_api.build_parser().parse_args([

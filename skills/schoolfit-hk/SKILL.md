@@ -1,7 +1,7 @@
 ---
 name: schoolfit-hk
-description: Use when helping Hong Kong families search, compare, shortlist, or assess secondary schools with SchoolFit HK data, including admissions notices, EDB vacancy signals, Band references, and conservative school-selection advice.
-version: 1.0.14
+description: Use when helping Hong Kong families search, compare, shortlist, or assess schools across SchoolFit HK's secondary, primary, kindergarten, international, and postsecondary databases, including admissions notices, EDB vacancy signals, Band references where applicable, and conservative school-selection advice.
+version: 1.0.15
 metadata:
   openclaw:
     homepage: https://github.com/djanngau/schoolfit-hk-skill
@@ -27,9 +27,17 @@ metadata:
 
 # SchoolFit HK
 
-Keywords: SchoolFit HK, 啱校, 香港升中, 香港中學, OpenClaw skill, ArkAgent skill, Claude Code skill, school selection, admissions, vacancies, Banding, Reach Match Safe, schoolfit.hk.
+Keywords: SchoolFit HK, 啱校, 香港學校, 香港升中, 香港中學, 香港小學, 香港幼稚園, 國際學校, 專上教育, OpenClaw skill, ArkAgent skill, Claude Code skill, school selection, admissions, vacancies, Banding, Reach Match Safe, schoolfit.hk.
 
-Use this skill to help families make conservative Hong Kong secondary-school decisions using the public SchoolFit HK API. The skill must not read local Edu project databases, Prisma files, snapshots, cookies, `.env` files, or private API keys.
+Use this skill to help families make conservative Hong Kong school decisions across the public SchoolFit HK API. The current service scope covers:
+
+- 中學資料庫: 441 schools
+- 小學資料庫: 507 schools
+- 幼稚園資料庫: 955 schools
+- 國際學校資料庫: 103 schools
+- 專上教育庫: 35 institutions/options
+
+The skill must not read local Edu project databases, Prisma files, snapshots, cookies, `.env` files, or private API keys.
 
 ## Data Boundary
 
@@ -60,7 +68,7 @@ Use `<base_dir>` as the directory that contains this `SKILL.md`.
 After installation, if no authorization code has been provided yet, say this in the chat window before doing any search:
 
 ```text
-請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit 授權碼，複製後直接發到這個聊天窗口。我收到後就可以幫你查學校、比較、做推薦和申請計劃。
+請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit 授權碼，複製後直接發到這個聊天窗口。我收到後就可以幫你查中學、小學、幼稚園、國際學校和專上教育資料，做比較、推薦和申請計劃。
 ```
 
 如果 URL 後面帶有 `?`、`#`、tracking string 或其他路徑，先刪到 `https://schoolfit.hk/skill-code` 再打開。
@@ -69,6 +77,7 @@ When the user pastes a code such as `sfhk_...`, keep using it for subsequent Sch
 
 ```bash
 python3 <base_dir>/scripts/schoolfit_api.py quick-start --format markdown
+python3 <base_dir>/scripts/schoolfit_api.py school-levels --format markdown
 python3 <base_dir>/scripts/schoolfit_api.py activate "我的 SchoolFit 授權碼是 sfhk_xxxxxxxxxxxxxxxx" --format markdown
 python3 <base_dir>/scripts/schoolfit_api.py metadata --skill-code "PASTE_CODE_FROM_CHAT"
 ```
@@ -100,7 +109,10 @@ python3 <base_dir>/scripts/schoolfit_api.py self-check --format markdown
 Search schools:
 
 ```bash
-python3 <base_dir>/scripts/schoolfit_api.py search-schools --skill-code "PASTE_CODE" --q "沙田 Band 1 英文 男女校" --page-size 10 --format markdown
+python3 <base_dir>/scripts/schoolfit_api.py search-schools --skill-code "PASTE_CODE" --level secondary --q "沙田 Band 1 英文 男女校" --page-size 10 --format markdown
+python3 <base_dir>/scripts/schoolfit_api.py search-schools --skill-code "PASTE_CODE" --level primary --q "九龍城 小學 英文環境" --page-size 10 --format markdown
+python3 <base_dir>/scripts/schoolfit_api.py advisor-search --skill-code "PASTE_CODE" --level international --q "港島 國際學校 IB A-Level" --format markdown
+python3 <base_dir>/scripts/schoolfit_api.py advisor-search --skill-code "PASTE_CODE" --level postsecondary --q "JUPAS HD 副學士 銜接" --format markdown
 ```
 
 Smart advisor search for polished model answers:
@@ -178,6 +190,11 @@ python3 <base_dir>/scripts/schoolfit_api.py admissions --grade S1 --is-active tr
 
 When presenting results:
 
+- Speak like a calm Hong Kong school advisor, not a database console. Start by acknowledging the family's goal in one short sentence, then show what was understood, then ask only the missing inputs needed for the next step.
+- Use parent-friendly labels such as `資料庫`, `地區`, `Band 參考`, `授課語言`, `學費上限`, and `重視因素`; avoid exposing raw internal keys such as `level`, `banding`, `hasVacancy` unless the user is asking for CLI/API usage.
+- Keep follow-up questions low-friction. Ask at most three questions and phrase them as optional refinements, not blockers, unless the query cannot be answered safely.
+- Reassure users that they do not need to provide student name, HKID, phone number, address, report-card PDFs, or other personally identifiable data.
+- When the user is unsure, offer concrete choices across the five databases: 中學、小學、幼稚園、國際學校、專上教育.
 - Match the user's language. If the user asks in Traditional Chinese, answer in Traditional Chinese; if they ask in Simplified Chinese, answer in Simplified Chinese; if they ask in English, answer in English. Keep Hong Kong school terms such as Band 參考, 直資/DSS, 資助/aided, 官立/government and EMI/CMI precise.
 - For broad search or parent advisory questions, prefer `advisor-search` over raw `search-schools`. It returns both structured API results and an `llmBrief` for the calling model to polish.
 - Use the returned `llmBrief` as guidance, then write the final answer yourself in natural language. Do not paste raw JSON unless the user asks for raw data.
@@ -208,6 +225,7 @@ When presenting results:
 Use `search-schools` when the user asks for schools by district, Band reference, gender, medium, funding type, tuition, religion, or vacancy status. Supported filters include:
 
 - `--q`
+- `--level` (`secondary`, `primary`, `kindergarten`, `international`, `postsecondary`)
 - `--district`
 - `--banding`
 - `--gender`
@@ -223,7 +241,7 @@ For district-only or mixed natural-language searches such as `九龍城 Band 1 �
 
 ### Advisor Search
 
-Use `advisor-search` when the user asks a broad question like "推薦沙田 Band 1 英文中學", "幫我揀幾間", "邊幾間適合", or any search request where a polished recommendation-style answer is better than a raw list.
+Use `advisor-search` when the user asks a broad question like "推薦沙田 Band 1 英文中學", "九龍城有哪些小學", "港島國際學校 IB", "JUPAS/副學士銜接", "幫我揀幾間", "邊幾間適合", or any search request where a polished recommendation-style answer is better than a raw list.
 
 `advisor-search` first parses natural language conditions locally, then calls SchoolFit HK search and detects intent from user wording unless `--intent` is provided. The live API may also return `parentQuestion` plus `llmBrief.answerBlueprint`; preserve those fields because they encode the current parent-query understanding, evidence order, missing information and response shape.
 
@@ -282,9 +300,13 @@ Use `quick-start` when the user has just installed the Skill or asks how to begi
 
 Use `activate` when the user pastes a message containing `sfhk_...`. After successful activation, keep the code only in the current chat context and pass it into future helper calls with `--skill-code`.
 
+### School Levels
+
+Use `school-levels` when the user asks what the Skill can cover, or before a broad advisory turn where the school stage is unclear. It does not require activation and returns the five supported databases, current counts, `--level` values, and example prompts.
+
 ### Parse Parent Request
 
-Use `parse-parent-request` before API calls when the user writes a long mixed-language prompt. It extracts district, Band reference, gender, medium, funding type, grade, vacancy/admission intent, DSS preference, risk preference, tuition and priorities without calling the API. It also returns `missingInfoQuestions` and `conversationHints` for follow-up turns.
+Use `parse-parent-request` before API calls when the user writes a long mixed-language prompt. It extracts school level, region/district, Band reference where applicable, gender, medium, funding type, grade, vacancy/admission intent, DSS preference, risk preference, tuition and priorities without calling the API. It also returns `missingInfoQuestions` and `conversationHints` for follow-up turns.
 
 ### Self Check
 
@@ -330,5 +352,5 @@ ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 Marketplace summary:
 
 ```text
-SchoolFit HK helps agents search, compare, and recommend Hong Kong secondary schools using schoolfit.hk public APIs, with conservative source labeling for official facts, Band references, EDB vacancy data, and admission notices.
+SchoolFit HK helps agents search, compare, and recommend Hong Kong schools across secondary, primary, kindergarten, international, and postsecondary SchoolFit HK public APIs, with conservative source labeling for official facts, Band references where applicable, vacancy data, and admission notices.
 ```
