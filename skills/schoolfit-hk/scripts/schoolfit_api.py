@@ -381,10 +381,11 @@ def infer_intent(args: argparse.Namespace) -> str:
     if explicit and explicit != "auto":
         return explicit
 
-    q = (getattr(args, "q", "") or "").lower()
+    raw_q = getattr(args, "q", "") or ""
+    q = raw_q.lower()
     if any(keyword in q for keyword in ("比較", "對比", "比對", "vs", "v.s", "對拋")):
         return "compare"
-    if any(keyword in q for keyword in ("學額", "学额", "插班", "插班位", "vacancy", "學位", "学位", "空位", "餘額", "余额", "有冇位", "有位", "有无位")):
+    if is_vacancy_query(raw_q, q):
         return "vacancy"
     if any(keyword in q for keyword in ("招生", "通告", "截止", "申請表", "申请表", "deadline", "報名", "报名")):
         return "admissions"
@@ -864,6 +865,11 @@ SCHOOL_LEVEL_ALIASES = {
     "k1": "kindergarten",
     "k2": "kindergarten",
     "k3": "kindergarten",
+    "pn": "kindergarten",
+    "n班": "kindergarten",
+    "n 班": "kindergarten",
+    "pre-nursery": "kindergarten",
+    "pre nursery": "kindergarten",
     "nursery": "kindergarten",
     "international": "international",
     "國際學校": "international",
@@ -878,7 +884,6 @@ SCHOOL_LEVEL_ALIASES = {
     "专上": "postsecondary",
     "大專": "postsecondary",
     "大专": "postsecondary",
-    "院校": "postsecondary",
     "jupas": "postsecondary",
     "e-app": "postsecondary",
     "eapp": "postsecondary",
@@ -888,6 +893,8 @@ SCHOOL_LEVEL_ALIASES = {
     "高级文凭": "postsecondary",
     "higher diploma": "postsecondary",
     "associate degree": "postsecondary",
+    "top-up degree": "postsecondary",
+    "top up degree": "postsecondary",
 }
 
 SCHOOL_NAME_ALIASES = {
@@ -981,9 +988,134 @@ def contains_any_text(raw: str, lowered: str, words: tuple[str, ...]) -> bool:
         if word.isascii():
             if word.lower() in lowered:
                 return True
-        elif word in raw:
+        elif word in raw or word.lower() in lowered:
             return True
     return False
+
+
+def normalized_ascii_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def mentions_known_secondary_school(raw: str, lowered: str) -> bool:
+    compact = normalized_ascii_text(raw)
+    for alias, school_name in SCHOOL_NAME_ALIASES.items():
+        if alias.isascii() and re.search(rf"(?<![a-z0-9]){re.escape(alias.lower())}(?![a-z0-9])", lowered):
+            return True
+        if school_name and school_name.lower() in lowered:
+            return True
+        if school_name and normalized_ascii_text(school_name) in compact:
+            return True
+    return False
+
+
+def is_allocation_context(raw: str, lowered: str) -> bool:
+    return contains_any_text(raw, lowered, (
+        "自行分配學位", "自行分配学位", "學位分配辦法", "学位分配办法",
+        "統一派位", "统一派位", "中一派位", "小一入學", "小一入学",
+        "派位", "甲部", "乙部", "校網", "校网", "聯繫中學位", "联系中学位",
+        "直屬中學位", "直属中学位", "allocation system",
+        "central allocation", "discretionary places", "兄姊分", "兄姐分",
+    ))
+
+
+def is_vacancy_query(raw: str, lowered: str) -> bool:
+    if infer_school_level_from_common_question(raw, lowered) == "postsecondary":
+        return False
+    if contains_any_text(raw, lowered, (
+        "學額", "学额", "插班", "插班位", "空位", "餘額", "余额",
+        "有冇位", "有位", "有无位", "vacancy", "vacancies", "available places",
+        "places available", "seats available", "有無位", "有无位", "冇位", "無位", "无位",
+    )):
+        return True
+    if contains_any_text(raw, lowered, ("學位", "学位", "places", "seats")) and not is_allocation_context(raw, lowered):
+        return True
+    return False
+
+
+def infer_school_level_from_common_question(raw: str, lowered: str) -> str | None:
+    if contains_any_text(raw, lowered, ("k3 primary school", "kindergarten to dss primary", "幼稚園校長推薦信升小", "幼稚园校长推荐信升小")):
+        return "kindergarten"
+    if contains_any_text(raw, lowered, ("woodland pre-schools international kindergarten", "woodland pre-schools",)):
+        return "international"
+    if contains_any_text(raw, lowered, ("primary section", "primary division", "junior school", "preparatory school", "primary school", "附屬小學", "附属小学")):
+        return "primary"
+    if mentions_known_secondary_school(raw, lowered):
+        return "secondary"
+    if "primary school" in lowered and "international school" not in lowered:
+        return "primary"
+    if ("小學" in raw or "小学" in raw) and "ib pyp" in lowered and "國際學校" not in raw and "国际学校" not in raw:
+        return "primary"
+    if contains_any_text(raw, lowered, ("本地小學轉國際學校前", "本地小学转国际学校前")):
+        return "primary"
+    if "international kindergarten to international primary" in lowered:
+        return "international"
+    if contains_any_text(raw, lowered, ("k1", "k2", "k3", "幼稚園", "幼稚园", "幼兒園", "幼儿园", "international kindergarten")):
+        return "kindergarten"
+    if contains_any_text(raw, lowered, (
+        "直屬中學", "直属中学", "聯繫中學", "联系中学", "中學位", "中学位",
+        "自行分配兩個", "自行分配两个", "兩個 choice", "两个 choice", "choice 次序",
+        "banding reference", "自行分配面試", "自行分配面试", "中學學位分配", "中学学位分配",
+        "自行分配學位面試", "自行分配学位面试",
+        "小六呈分後升中", "小六呈分后升中", "小六操行", "呈分後升中", "呈分后升中",
+        "heep yunn", "想轉直資中學", "想转直资中学", "嘉諾撒聖瑪利書院", "嘉诺撒圣玛利书院",
+        "st francis xavier college", "中六轉校", "中六转校", "f1 admission",
+        "學校 banding", "学校 banding", "banding 係咪官方", "banding 系咪官方",
+        "自行面試", "自行面试", "女校今年仲收唔收插班",
+        "升中統一派位", "升中统一派位",
+    )):
+        return "secondary"
+    if contains_any_text(raw, lowered, ("小一", "p1", "小二", "p2", "小三", "p3", "小四", "p4", "小五", "p5", "小六", "p6")):
+        return "primary"
+    if contains_any_text(raw, lowered, ("pn", "n1", "n班", "n 班", "pre-nursery", "pre nursery", "細b", "细b", "註冊證", "注册证")):
+        return "kindergarten"
+    if contains_any_text(raw, lowered, (
+        "hku space", "hpshcc", "hkcc", "polyu hkcc", "cuscs", "continuing and professional studies",
+        "vtc youth college", "hku space community college", "international culinary institute",
+        "caritas institute of higher education", "ouhk lipace", "lipace", "stanley ho community college",
+    )):
+        return "postsecondary"
+    if contains_any_text(raw, lowered, (
+        "國際學校", "国际学校", "international school", "year 1", "year1", "year 6", "year6",
+        "year 7", "year7", "year 8", "year8", "year 9", "year9", "year 10", "year10",
+        "grade 10", "grade10", "igcse", "ib school", "ib pyp", "ib myp", "ib dp",
+        "ap school", "canadian curriculum", "esf", "harrow", "kellett", "chinese international school",
+        "isf academy", "victoria shanghai academy", "vsa", "german swiss international school",
+        "french international school", "debenture", "capital levy", "corporate nomination",
+        "nomination right", "boarding fees", "國際學校 waiting list", "国际学校 waiting list",
+        "gsis", "german stream", "hkis", "american curriculum", "malvern college hong kong",
+        "malvern college pre-school", "nord anglia", "international primary", "international kindergarten",
+        "discovery college", "dbis", "american school hong kong", "shrewsbury", "wycombe abbey",
+        "mount kelly", "invictus school", "delia school of canada", "woodland pre-schools",
+        "外籍 passport", "foreign passport",
+    )):
+        return "international"
+    if contains_any_text(raw, lowered, (
+        "top-up degree", "top up degree", "bachelor", "degree", "dse", "ugc", "學士", "学士",
+        "自資學士", "自资学士", "聯招", "联招", "大學銜接", "大学衔接", "university",
+        "hk university", "sub-degree", "副學位", "副学位", "nmtss", "sssdp", "higher diploma",
+        "associate degree", "e-app", "eapp", "jupas", "top up", "scope top up", "hsuhk",
+        "undergraduate admission", "cityu", "chu hai college", "savannah college", "elder academy",
+        "海外學歷申請香港大學", "海外学历申请香港大学",
+    )):
+        return "postsecondary"
+    if re.search(r"\bHD\b", raw):
+        return "postsecondary"
+    if re.search(r"\bS[1-6]\b", raw, re.IGNORECASE):
+        return "secondary"
+    if contains_any_text(raw, lowered, ("小學", "小学", "私小", "津小", "primary school", "小一入學", "小一入学", "小一自行", "小一統一", "小一统一", "小學校網", "小学校网")):
+        return "primary"
+    if re.search(r"band\s*[123]", lowered) or contains_any_text(raw, lowered, ("中一", "中一派位")):
+        return "secondary"
+    if re.search(r"\b\d{2}\s*校網\b", raw) or re.search(r"\b\d{2}\s*校网\b", raw):
+        return "primary"
+    if contains_any_text(raw, lowered, ("統一派位", "统一派位", "甲一", "乙一", "central allocation")):
+        return "primary"
+    if contains_any_text(raw, lowered, ("自行分配 sibling", "兄姊分", "兄姐分", "sibling 兄姊")):
+        return "primary"
+    if re.search(r"band\s*[123]", lowered) or contains_any_text(raw, lowered, ("升中", "中一", "中一派位", "呈分", "自行兩間", "自行两间")):
+        return "secondary"
+    return None
 
 
 def detect_response_language(raw: str, lowered: str) -> str:
@@ -1022,11 +1154,17 @@ def parse_parent_request_text(text: str | None) -> dict[str, Any]:
     signals["responseLanguage"] = response_language
 
     for alias, level in SCHOOL_LEVEL_ALIASES.items():
-        if (alias.isascii() and alias in lowered) or (not alias.isascii() and alias in raw):
+        if (alias.isascii() and alias in lowered) or (not alias.isascii() and (alias in raw or alias.lower() in lowered)):
             filters["level"] = level
             signals["level"] = level
             signals["levelLabel"] = SCHOOL_LEVEL_LABELS.get(level)
             break
+
+    inferred_level = infer_school_level_from_common_question(raw, lowered)
+    if inferred_level:
+        filters["level"] = inferred_level
+        signals["level"] = inferred_level
+        signals["levelLabel"] = SCHOOL_LEVEL_LABELS.get(inferred_level)
 
     for alias, district in DISTRICT_ALIASES.items():
         if (alias.isascii() and alias in lowered) or (not alias.isascii() and alias in raw):
@@ -1089,7 +1227,7 @@ def parse_parent_request_text(text: str | None) -> dict[str, Any]:
         filters["vacancyGrade"] = f"S{grade_match.group(1)}"
         signals["grade"] = f"S{grade_match.group(1)}"
 
-    if contains_any_text(raw, lowered, ("學額", "学额", "學位", "学位", "插班", "插班位", "空位", "餘額", "余额", "有位", "有无位", "vacancy", "vacancies", "places", "seats", "available places")):
+    if is_vacancy_query(raw, lowered):
         parsed["intentHints"].append("vacancy")
         filters["hasVacancy"] = True
     if contains_any_text(raw, lowered, ("招生", "通告", "截止", "申請", "申请", "報名", "报名", "deadline", "deadlines", "admission", "admissions", "application", "apply")):
@@ -1177,6 +1315,8 @@ def parse_parent_request_text(text: str | None) -> dict[str, Any]:
             **{key: value for key, value in signals.items() if key in {"levelLabel", "languagePriority", "acceptsDss", "priorities", "supportNeeds", "responseLanguage"}},
         }
     }
+    if parsed["intentHints"]:
+        suggested["advisor-search"]["intent"] = parsed["intentHints"][0]
     parsed["suggestedCommandParams"] = suggested
     parsed["missingInfoQuestions"] = build_missing_info_questions(parsed)
     parsed["friendlySummary"] = build_friendly_condition_summary(parsed)
@@ -1686,6 +1826,12 @@ def marketplace_demo_payload() -> dict[str, Any]:
                 "resultSummary": "學額與招生分開輸出 source、dataMonth/lastSeenAt/confidence 和核實提示。",
             },
             {
+                "title": "升中銜接關係",
+                "prompt": "查一條龍、直屬、聯繫小學和中學關係。",
+                "command": "school-relationships --type all --q \"基道\" --matched-only --format markdown",
+                "resultSummary": "返回 EDB 一條龍與 CHSC 直屬/聯繫關係，並提醒關係不等於保證錄取。",
+            },
+            {
                 "title": "單校決策摘要",
                 "prompt": "幫我深挖沙田循道中學的學額、招生和風險。",
                 "command": "decision-brief sha-tin-methodist-college",
@@ -1707,6 +1853,7 @@ def marketplace_demo_payload() -> dict[str, Any]:
             {"name": "advisor-search", "description": "對話式建議主入口，可用 --level 指定中學、小學、幼稚園、國際學校或專上教育庫。"},
             {"name": "shortlist-builder", "description": "把搜尋結果整理成首選、穩陣、備選和暫不建議。"},
             {"name": "deep-compare", "description": "比較 2-4 間學校，產生差異、風險與下一步。"},
+            {"name": "school-relationships", "description": "查一條龍、直屬、聯繫小學/中學關係，與 SchoolFit 主題頁一致。"},
             {"name": "decision-brief", "description": "生成單校 compact 決策摘要，含學額/招生時效核對點。"},
             {"name": "school-report", "description": "decision-brief 的兼容別名，供舊 Agent 提示使用。"},
             {"name": "application-plan", "description": "生成家庭落地型申請清單與跟進節奏。"},
@@ -1776,6 +1923,8 @@ def compact_school(school: dict[str, Any]) -> dict[str, Any]:
         "annualTuitionHkd": school.get("annualTuitionHkd"),
         "summary": school.get("primaryReviewSummary") or school.get("purpose"),
     }
+    if school.get("schoolRelationships"):
+        compacted["schoolRelationships"] = school.get("schoolRelationships")
     compacted["rankingRationale"] = build_ranking_rationale(compacted)
     return compacted
 
@@ -1790,6 +1939,36 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
         return payload if isinstance(payload, dict) else parse_parent_request_text(str(payload or ""))
     if command == "self-check":
         return payload if isinstance(payload, dict) else self_check_output()
+    if command == "school-relationships":
+        relationships = payload.get("relationships", []) if isinstance(payload, dict) else []
+        output = {
+            "query": payload.get("query") if isinstance(payload, dict) else None,
+            "filters": payload.get("filters", {}) if isinstance(payload, dict) else {},
+            "count": payload.get("count", len(relationships)) if isinstance(payload, dict) else len(relationships),
+            "relationships": relationships[:50],
+            "pagination": payload.get("pagination") if isinstance(payload, dict) else None,
+            "stats": payload.get("stats") if isinstance(payload, dict) else None,
+            "schoolfitUrl": payload.get("schoolfitUrl") if isinstance(payload, dict) else "https://schoolfit.hk/school-relationships",
+            "sourcePolicy": payload.get("sourcePolicy", []) if isinstance(payload, dict) else [],
+            "sourceLedger": {
+                **source_ledger,
+                "officialFacts": [
+                    {"name": "EDB through-train schools list", "source": "https://www.edb.gov.hk/attachment/datagovhk/Through-train-schools-tc.csv"},
+                    {"name": "CHSC Primary School Profiles", "source": "https://www.chsc.hk/psp2025/index.php?lang_id=2"},
+                ],
+            },
+            "llmBrief": standard_llm_brief(
+                "school-relationships",
+                "Explain source-labelled primary-secondary school relationships without treating them as admission guarantees.",
+                [
+                    "分清一條龍、直屬、聯繫三類關係。",
+                    "必須說明關係不等於保證錄取，年度安排需向學校和教育局核實。",
+                    "優先引用 returned relationships 的 primary/secondary/source/notes。",
+                ],
+                {"relationships": relationships[:8]},
+            ),
+        }
+        return output
     if command == "activate":
         return payload if isinstance(payload, dict) else {}
     if command == "resolve-school":
@@ -2098,12 +2277,59 @@ def compact_admission_summary(summary: dict[str, Any] | None) -> dict[str, Any] 
     }
 
 
+def target_level_from_advisor_payload(payload: dict[str, Any]) -> str | None:
+    filters = payload.get("filters") if isinstance(payload.get("filters"), dict) else {}
+    if filters.get("level"):
+        return str(filters.get("level"))
+    parent_question = payload.get("parentQuestion") if isinstance(payload.get("parentQuestion"), dict) else {}
+    detected = parent_question.get("detectedSignals") if isinstance(parent_question.get("detectedSignals"), dict) else {}
+    if detected.get("level"):
+        return str(detected.get("level"))
+    search = payload.get("search") if isinstance(payload.get("search"), dict) else {}
+    search_filters = search.get("filters") if isinstance(search.get("filters"), dict) else {}
+    if search_filters.get("level"):
+        return str(search_filters.get("level"))
+    return None
+
+
+def recommendation_matches_level(recommendation: dict[str, Any], target_level: str | None) -> tuple[dict[str, Any] | None, int]:
+    if not target_level or not isinstance(recommendation, dict):
+        return recommendation, 0
+    removed = 0
+    kept_buckets = []
+    for bucket in recommendation.get("buckets") or []:
+        if not isinstance(bucket, dict):
+            continue
+        schools = []
+        for item in bucket.get("schools") or []:
+            school = item.get("school") if isinstance(item, dict) else {}
+            school_level = str((school or {}).get("level") or (school or {}).get("schoolLevel") or "")
+            if school_level and school_level != target_level:
+                removed += 1
+                continue
+            schools.append(item)
+        kept_buckets.append({**bucket, "schools": schools})
+    filtered = {**recommendation, "buckets": kept_buckets}
+    if removed:
+        filtered["crossLevelFiltered"] = {
+            "removed": removed,
+            "targetLevel": target_level,
+            "reason": "Server recommendation contained schools outside the requested SchoolFit database level.",
+        }
+    has_any_school = any(bucket.get("schools") for bucket in kept_buckets)
+    return (filtered if has_any_school else None), removed
+
+
 def compact_advisor_search(payload: dict[str, Any]) -> dict[str, Any]:
     search = compact_output("search-schools", payload.get("search", {}))
     intent = payload.get("intent", "search")
     source_ledger = payload.get("sourceLedger") if isinstance(payload.get("sourceLedger"), dict) else search.get("sourceLedger") or build_source_ledger()
     recommendation_raw = payload.get("recommendation")
     recommendation = compact_output("recommend", recommendation_raw) if recommendation_raw else None
+    target_level = target_level_from_advisor_payload(payload)
+    removed_cross_level_recommendations = 0
+    if recommendation:
+        recommendation, removed_cross_level_recommendations = recommendation_matches_level(recommendation, target_level)
     compare_payload = payload.get("compare")
     compare_output = compact_output("compare", compare_payload) if compare_payload else None
     detail_payload = payload.get("schoolDetail")
@@ -2141,6 +2367,11 @@ def compact_advisor_search(payload: dict[str, Any]) -> dict[str, Any]:
         "sourceLedger": source_ledger,
         "apiLlmBrief": payload.get("llmBrief") if isinstance(payload.get("llmBrief"), dict) else {},
     }
+    if removed_cross_level_recommendations:
+        output["notes"] = [
+            *output["notes"],
+            f"已移除 {removed_cross_level_recommendations} 個跨資料庫階段的推薦項，避免把非 {SCHOOL_LEVEL_LABELS.get(target_level, target_level)} 學校混入答案。",
+        ]
     if output["decisionBriefs"]:
         output["nextActions"].append("如要單校深挖，優先使用 decisionBriefApiUrl 或 decision-brief 命令取得單校決策摘要。")
     output["llmBrief"] = build_advisor_llm_brief(output)
@@ -2671,6 +2902,26 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
                 print(f"- {policy}")
         print_caveats()
         return
+    if command == "school-relationships":
+        print(f"## SchoolFit HK 升中銜接關係\n\n共 {data.get('count', 0)} 筆。")
+        print(f"\nSchoolFit: {data.get('schoolfitUrl')}")
+        for item in data.get("relationships", [])[:30]:
+            primary = item.get("primary") or {}
+            secondary = item.get("secondary") or {}
+            print(f"- **{primary.get('nameZh') or primary.get('nameEn')}** → **{secondary.get('nameZh') or secondary.get('nameEn')}**")
+            print(f"  - 類型: {item.get('typeLabel') or item.get('type')} | 來源: {item.get('sourceLabel') or item.get('source')} | confidence: {item.get('confidence')}")
+            if primary.get("schoolfitUrl"):
+                print(f"  - 小學: {primary.get('schoolfitUrl')}")
+            if secondary.get("schoolfitUrl"):
+                print(f"  - 中學: {secondary.get('schoolfitUrl')}")
+            if item.get("notes"):
+                print(f"  - 備註: {item.get('notes')}")
+        policy = data.get("sourcePolicy") or []
+        if policy:
+            print("\n### 資料邊界")
+            for note in policy:
+                print(f"- {note}")
+        return
     if command == "search-schools":
         print(f"## SchoolFit HK 搜尋結果\n\n共 {data.get('count', 0)} 間。")
         if data.get("robustSearch"):
@@ -2930,6 +3181,15 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--deadline-window-days", type=int, default=365)
     plan.add_argument("--grade", choices=["S1", "S2", "S3", "S4", "S5", "S6"], default="S1")
 
+    relationships = sub.add_parser("school-relationships", help="Query primary-secondary through-train, feeder, and linked school relationships.")
+    add_output_options(relationships)
+    relationships.add_argument("--type", choices=["all", "through_train", "through-train", "feeder", "linked"], default="all")
+    relationships.add_argument("--q", help="Primary or secondary school name, district, or relationship keyword.")
+    relationships.add_argument("--district")
+    relationships.add_argument("--matched-only", action="store_true", help="Only show records linked to SchoolFit school detail pages.")
+    relationships.add_argument("--page", type=int)
+    relationships.add_argument("--page-size", type=int, default=24)
+
     demo = sub.add_parser("marketplace-demo", help="Print high-quality output-ready examples for marketplaces.")
     add_output_options(demo)
 
@@ -3126,6 +3386,20 @@ def recommendation_body_from_args(args: argparse.Namespace) -> dict[str, Any]:
     if getattr(args, "commute_minutes", None) is not None:
         body["commuteMinutes"] = args.commute_minutes
     return body
+
+
+def school_relationship_params(args: argparse.Namespace) -> dict[str, Any]:
+    relationship_type = getattr(args, "type", None)
+    if relationship_type == "through-train":
+        relationship_type = "through_train"
+    return {
+        "type": relationship_type,
+        "q": getattr(args, "q", None),
+        "district": getattr(args, "district", None),
+        "matchedOnly": getattr(args, "matched_only", None),
+        "page": getattr(args, "page", None),
+        "pageSize": getattr(args, "page_size", None),
+    }
 
 
 def sanitize_student_profile(raw: dict[str, Any]) -> dict[str, Any]:
@@ -3340,6 +3614,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 })
                 payload["search"] = merge_school_payloads(search_payload, fallback, args, reason="advisor_search_district_guard")
                 payload["fallbackUsed"] = "advisor_search_district_guard"
+    elif command == "school-relationships":
+        payload = api("GET", "/api/skill/school-relationships", params=school_relationship_params(args))
     elif command == "school-detail":
         slug = urllib.parse.quote(args.slug.strip(), safe="")
         payload = api("GET", f"/api/schools/{slug}")

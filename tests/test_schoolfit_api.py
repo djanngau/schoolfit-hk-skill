@@ -340,6 +340,47 @@ class SchoolFitApiTests(unittest.TestCase):
             schoolfit_api.run(args)
         self.assertFalse(request.call_args.kwargs["params"]["auditData"])
 
+    def test_school_relationships_command_calls_skill_endpoint(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "school-relationships",
+            "--type",
+            "through-train",
+            "--q",
+            "基道",
+            "--matched-only",
+            "--page-size",
+            "5",
+            "--format",
+            "json",
+        ])
+        payload = {
+            "count": 1,
+            "relationships": [{
+                "id": "r1",
+                "type": "through_train",
+                "typeLabel": "一條龍",
+                "primary": {"slug": "primary-a", "nameZh": "甲小學"},
+                "secondary": {"slug": "secondary-a", "nameZh": "甲中學"},
+                "sourceLabel": "EDB 官方名單",
+                "confidence": "high",
+            }],
+            "sourcePolicy": ["關係不等於保證錄取。"],
+            "schoolfitUrl": "https://schoolfit.hk/school-relationships?type=through_train&q=%E5%9F%BA%E9%81%93",
+        }
+        with mock.patch.object(schoolfit_api, "request_json", return_value=payload) as request:
+            output = schoolfit_api.run(args)
+        self.assertEqual(request.call_args.args[2], "/api/skill/school-relationships")
+        params = request.call_args.kwargs["params"]
+        self.assertEqual(params["type"], "through_train")
+        self.assertEqual(params["q"], "基道")
+        self.assertTrue(params["matchedOnly"])
+        self.assertEqual(params["pageSize"], 5)
+        self.assertEqual(output["relationships"][0]["type"], "through_train")
+        self.assertIn("primary-secondary school relationships", output["llmBrief"]["purpose"])
+        self.assertEqual(output["llmBrief"]["facts"]["relationships"][0]["id"], "r1")
+
     def test_reserved_client_code_header_is_sent(self):
         class FakeResponse:
             def __enter__(self):
@@ -532,6 +573,303 @@ class SchoolFitApiTests(unittest.TestCase):
             "json",
         ])
         self.assertEqual(schoolfit_api.infer_intent(args), "vacancy")
+
+    def test_parse_common_hk_school_questions_routes_to_expected_database(self):
+        cases = [
+            ("secondary", "升中自行可以報幾多間？多報會點？"),
+            ("secondary", "Band 1B 沙田男仔，自行兩間應該點揀？"),
+            ("secondary", "統一派位甲部乙部有咩分別？跨區搏 Band 1 得唔得？"),
+            ("secondary", "九龍城 Band 1 女校 英文環境 唔要直資 想穩陣"),
+            ("secondary", "中一派位 Banding 係咪官方公開？可以查我小朋友 band 嗎？"),
+            ("secondary", "想叩門，111 對升中有冇用？要準備咩文件？"),
+            ("secondary", "非華語學生想找英文中學，有冇支援？"),
+            ("secondary", "搬屋去沙田會唔會影響升中校網？"),
+            ("primary", "小一自行分配學位係咪只可以揀一間？"),
+            ("primary", "小一統一派位甲部可以跨區揀幾間？乙部點填？"),
+            ("primary", "41校網 vs 34校網，小學點揀？"),
+            ("primary", "九龍城小學 英文環境 通勤短 資助優先"),
+            ("primary", "小一叩門 111 係咩意思？"),
+            ("primary", "跨境學童小一派位校網點處理？"),
+            ("kindergarten", "K1 幾歲報名？細B應唔應該遲一年？"),
+            ("kindergarten", "PN 同 K1 有咩分別？幾時開始申請？"),
+            ("kindergarten", "荃灣幼稚園 K1 全日制 學券 學費唔太高"),
+            ("kindergarten", "幼稚園收生安排要唔要註冊證？"),
+            ("kindergarten", "N班面試常問咩？家長要點準備？"),
+            ("international", "港島國際學校 IB A-Level 學費 申請"),
+            ("international", "國際學校 debenture 債券係咪一定要買？"),
+            ("international", "ESF 同私立國際學校 waiting list 點樣排？"),
+            ("international", "外籍家庭剛搬香港，小朋友插班 Year 7 點申請？"),
+            ("international", "國際學校英文評估和面試通常考咩？"),
+            ("postsecondary", "JUPAS 本科同 HD 副學士點揀？"),
+            ("postsecondary", "DSE 18分，想讀護理，有咩專上選項？"),
+            ("postsecondary", "副學士升大學銜接風險大唔大？"),
+            ("postsecondary", "E-APP 係咩？同 JUPAS 有咩分別？"),
+            ("secondary", "La Salle College 係咪專上院校？幫我查男校"),
+            ("postsecondary", "香港 College top-up degree 有咩選擇？"),
+        ]
+        for expected, query in cases:
+            with self.subTest(query=query):
+                output = schoolfit_api.parse_parent_request_text(query)
+                self.assertEqual(output["filters"].get("level"), expected)
+
+    def test_allocation_places_are_not_treated_as_vacancy_queries(self):
+        output = schoolfit_api.parse_parent_request_text("小一自行分配學位係咪只可以揀一間？")
+        self.assertNotIn("vacancy", output["intentHints"])
+        self.assertNotIn("hasVacancy", output["filters"])
+
+        args = schoolfit_api.build_parser().parse_args([
+            "advisor-search",
+            "--q",
+            "小一自行分配學位係咪只可以揀一間？",
+            "--format",
+            "json",
+        ])
+        self.assertNotEqual(schoolfit_api.infer_intent(args), "vacancy")
+
+    def test_vacancy_edge_phrases_route_without_allocation_false_positives(self):
+        vacancy_cases = [
+            ("secondary", "女校今年仲收唔收插班？有位先睇"),
+            ("primary", "小學無位都可以交申請嗎？"),
+            ("kindergarten", "N班有無位？"),
+            ("kindergarten", "幼稚園冇位可否排後補"),
+            ("international", "Woodland Pre-schools 有冇 PN vacancy"),
+        ]
+        for expected_level, query in vacancy_cases:
+            with self.subTest(query=query):
+                output = schoolfit_api.parse_parent_request_text(query)
+                self.assertEqual(output["filters"].get("level"), expected_level)
+                self.assertIn("vacancy", output["intentHints"])
+                self.assertTrue(output["filters"].get("hasVacancy"))
+
+        non_vacancy_cases = [
+            ("primary", "兄姊分對小一學位有幫助嗎？"),
+            ("secondary", "自行分配學位面試要準備咩？"),
+            ("postsecondary", "degree places available through JUPAS 是不是學額？"),
+            ("postsecondary", "副學位 vacancy 和 waiting list 是院校自己處理嗎？"),
+        ]
+        for expected_level, query in non_vacancy_cases:
+            with self.subTest(query=query):
+                output = schoolfit_api.parse_parent_request_text(query)
+                self.assertEqual(output["filters"].get("level"), expected_level)
+                self.assertNotIn("vacancy", output["intentHints"])
+                self.assertNotIn("hasVacancy", output["filters"])
+
+    def test_advisor_search_filters_cross_level_recommendations(self):
+        payload = {
+            "query": "N班面試常問咩？",
+            "filters": {"level": "kindergarten"},
+            "search": {"count": 0, "schools": []},
+            "recommendation": {
+                "summary": "demo",
+                "buckets": [
+                    {
+                        "title": "Reach 進取選擇",
+                        "schools": [
+                            {
+                                "school": {
+                                    "slug": "st-pauls-college",
+                                    "nameZh": "聖保羅書院",
+                                    "level": "secondary",
+                                },
+                                "fitLabel": "Reach",
+                                "decisionBrief": "wrong level",
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
+        output = schoolfit_api.compact_advisor_search(payload)
+        self.assertIsNone(output["recommendation"])
+        self.assertTrue(any("跨資料庫階段" in note for note in output["notes"]))
+        self.assertEqual(output["llmBrief"]["recommendationHighlights"], [])
+
+    def test_parse_expanded_hk_school_questions_routes_to_expected_database(self):
+        cases = [
+            ("secondary", "Band 2A 女仔，想九龍城英中，有冇穩陣選擇？"),
+            ("secondary", "升中自行兩間應該一間進取一間穩陣嗎？"),
+            ("secondary", "中一統一派位乙部點排頭五志願？"),
+            ("secondary", "呈分試之後先知 Band 嗎？點樣用來選校？"),
+            ("secondary", "DGS 同 HY 邊間更適合 Band 1 女仔？"),
+            ("secondary", "Queen's College 係男校定男女校？"),
+            ("secondary", "想查 St. Paul's College 中一申請"),
+            ("secondary", "沙田官立中學有冇 S2 插班位？"),
+            ("secondary", "Band 3 學生想找校風好、唔太谷的中學"),
+            ("secondary", "中學直資同資助有咩分別？學費影響大嗎？"),
+            ("primary", "小一自行計分 15 分有機會嗎？"),
+            ("primary", "小一甲部跨區填三間會唔會影響乙部？"),
+            ("primary", "12校網女仔小學，重視英文同升中"),
+            ("primary", "港島區小學，唔想太谷，校風好"),
+            ("primary", "小二插班九龍塘小學，有冇學位？"),
+            ("primary", "私立小學和直資小學有咩分別？"),
+            ("primary", "小一註冊證同自行結果有咩關係？"),
+            ("primary", "34校網男仔，想資助小學"),
+            ("primary", "小學升中派位同小學校網有冇關係？"),
+            ("primary", "P3 transfer to English primary school in Kowloon City"),
+            ("kindergarten", "細B K1 應該做大B嗎？"),
+            ("kindergarten", "K1 註冊證幾時申請？"),
+            ("kindergarten", "PN班要唔要面試？"),
+            ("kindergarten", "N 班同幼兒班係咪同一樣？"),
+            ("kindergarten", "學券幼稚園同私立幼稚園點揀？"),
+            ("kindergarten", "全日制幼稚園 荃灣 有學券 學費低"),
+            ("kindergarten", "K2 插班港島幼稚園有位嗎？"),
+            ("kindergarten", "幼稚園非華語支援 NCS 有冇資料？"),
+            ("kindergarten", "K3 想轉校，會唔會影響小一？"),
+            ("kindergarten", "pre nursery interview questions in Hong Kong"),
+            ("international", "ESF Year 1 申請 waiting list 要等幾耐？"),
+            ("international", "Year 7 插班 IB school 港島"),
+            ("international", "A-Level 國際學校 新界 學費上限 20萬"),
+            ("international", "debenture 同 capital levy 有咩分別？"),
+            ("international", "外籍 passport 對國際學校入學有優先嗎？"),
+            ("international", "Which Hong Kong international schools offer boarding?"),
+            ("international", "AP curriculum international school in Hong Kong"),
+            ("international", "想由本地小學轉國際學校 Year 6"),
+            ("international", "國際學校 SEN support and EAL support"),
+            ("international", "ISF Academy 係國際學校嗎？"),
+            ("postsecondary", "DSE 20分 JUPAS nursing 有咩選擇？"),
+            ("postsecondary", "HD 同 Associate Degree 升大學邊個好？"),
+            ("postsecondary", "E-APP 報名截止日期係幾時？"),
+            ("postsecondary", "自資學士同 UGC 學位有咩分別？"),
+            ("postsecondary", "IVE Higher Diploma 銜接 top-up degree"),
+            ("postsecondary", "HKCC 副學士升 HKU 機會"),
+            ("postsecondary", "SSSDP nursing physiotherapy 適合 DSE 幾分？"),
+            ("postsecondary", "Non-JUPAS applicant with overseas qualification"),
+            ("postsecondary", "VTC higher diploma design programmes"),
+            ("postsecondary", "想讀幼兒教育高級文憑，有咩院校？"),
+        ]
+        for expected, query in cases:
+            with self.subTest(query=query):
+                output = schoolfit_api.parse_parent_request_text(query)
+                self.assertEqual(output["filters"].get("level"), expected)
+
+    def test_parse_high_ambiguity_school_questions_routes_to_expected_database(self):
+        cases = [
+            ("secondary", "自行分配兩個 choice 次序會唔會畀學校知？"),
+            ("secondary", "直屬小學升直屬中學是否一定收？"),
+            ("secondary", "聯繫中學位係咩？小六點部署？"),
+            ("secondary", "S4 轉校想讀英文班"),
+            ("secondary", "banding reference for St Mark School"),
+            ("primary", "自行分配 sibling 兄姊分點計？"),
+            ("primary", "統一派位甲一乙一都填同一間有用嗎？"),
+            ("primary", "primary school with IB PYP in Hong Kong"),
+            ("kindergarten", "K1 waiting list 點跟進？"),
+            ("international", "Harrow Hong Kong boarding fees"),
+            ("international", "Kellett School capital levy"),
+            ("international", "AP school Hong Kong Grade 10 transfer"),
+            ("international", "IB school with through-train primary secondary"),
+            ("postsecondary", "overseas qualification apply HK university"),
+            ("postsecondary", "副學位學費資助 NMTSS"),
+        ]
+        for expected, query in cases:
+            with self.subTest(query=query):
+                output = schoolfit_api.parse_parent_request_text(query)
+                self.assertEqual(output["filters"].get("level"), expected)
+
+    def test_linked_secondary_school_place_is_not_treated_as_vacancy(self):
+        output = schoolfit_api.parse_parent_request_text("聯繫中學位係咩？小六點部署？")
+        self.assertEqual(output["filters"].get("level"), "secondary")
+        self.assertNotIn("vacancy", output["intentHints"])
+        self.assertNotIn("hasVacancy", output["filters"])
+
+    def test_parse_additional_realistic_school_questions_routes_to_expected_database(self):
+        cases = [
+            ("secondary", "自行分配面試會問時事嗎？"),
+            ("secondary", "中學學位分配辦法和小一派位有咩不同？"),
+            ("secondary", "小六呈分後升中選校策略"),
+            ("primary", "私小 waiting list 點跟進？"),
+            ("primary", "小學 IB PYP 和本地課程分別"),
+            ("primary", "本地小學轉國際學校前應否先讀私小？"),
+            ("international", "GSIS German stream application"),
+            ("international", "HKIS American curriculum application"),
+            ("international", "Malvern College Hong Kong boarding?"),
+            ("international", "Nord Anglia Hong Kong fees"),
+            ("international", "international kindergarten to international primary"),
+            ("postsecondary", "CityU SCOPE top up"),
+            ("postsecondary", "HD internship and articulation"),
+        ]
+        for expected, query in cases:
+            with self.subTest(query=query):
+                output = schoolfit_api.parse_parent_request_text(query)
+                self.assertEqual(output["filters"].get("level"), expected)
+
+    def test_parse_named_school_and_program_questions_routes_to_expected_database(self):
+        cases = [
+            ("secondary", "Heep Yunn 自行面試點準備？"),
+            ("secondary", "小六操行 B 會影響中學自行嗎？"),
+            ("secondary", "DSE 成績不是很好想轉直資中學"),
+            ("primary", "Maryknoll Convent School Primary Section 小一"),
+            ("primary", "津小有沒有學費？"),
+            ("primary", "小六呈分前轉小學風險"),
+            ("kindergarten", "幼兒班 N1 兩歲半可以嗎？"),
+            ("international", "Discovery College fees"),
+            ("international", "American School Hong Kong AP curriculum"),
+            ("international", "Malvern College Pre-School Hong Kong"),
+            ("international", "Shrewsbury Year 3 application"),
+            ("postsecondary", "HSUHK undergraduate admission score"),
+        ]
+        for expected, query in cases:
+            with self.subTest(query=query):
+                output = schoolfit_api.parse_parent_request_text(query)
+                self.assertEqual(output["filters"].get("level"), expected)
+
+    def test_parse_section_and_institution_name_questions_routes_to_expected_database(self):
+        cases = [
+            ("secondary", "嘉諾撒聖瑪利書院是否女校？"),
+            ("primary", "Diocesan Boys School Primary Division"),
+            ("primary", "Diocesan Girls Junior School application"),
+            ("kindergarten", "Think International Kindergarten"),
+            ("international", "Wycombe Abbey School Hong Kong"),
+            ("international", "Mount Kelly School Hong Kong"),
+            ("postsecondary", "CityU data science undergraduate"),
+            ("postsecondary", "Chu Hai College undergraduate"),
+            ("postsecondary", "Savannah College Hong Kong admission"),
+            ("postsecondary", "Elder Academy diploma?"),
+        ]
+        for expected, query in cases:
+            with self.subTest(query=query):
+                output = schoolfit_api.parse_parent_request_text(query)
+                self.assertEqual(output["filters"].get("level"), expected)
+
+    def test_parse_long_tail_school_and_institution_names_routes_to_expected_database(self):
+        cases = [
+            ("secondary", "St Francis Xavier College banding"),
+            ("secondary", "中六轉校重讀 DSE 可行嗎？"),
+            ("secondary", "F1 admission for returnee student"),
+            ("kindergarten", "K3 primary school placement support"),
+            ("kindergarten", "kindergarten to DSS primary preparation"),
+            ("international", "DBIS school fees Hong Kong"),
+            ("international", "Invictus School Hong Kong fees"),
+            ("international", "Woodland Pre-Schools international kindergarten"),
+            ("international", "Delia School of Canada admission"),
+            ("postsecondary", "HKU SPACE Po Leung Kuk Stanley Ho Community College"),
+            ("postsecondary", "PolyU HKCC year 2 admission"),
+            ("postsecondary", "HKCC articulation to PolyU"),
+            ("postsecondary", "CUHK School of Continuing and Professional Studies"),
+            ("postsecondary", "HKU SPACE Community College nursing"),
+            ("postsecondary", "VTC Youth College diploma"),
+            ("postsecondary", "International Culinary Institute Hong Kong"),
+            ("postsecondary", "Caritas Institute of Higher Education nursing"),
+            ("postsecondary", "OUHK LiPACE programme"),
+        ]
+        for expected, query in cases:
+            with self.subTest(query=query):
+                output = schoolfit_api.parse_parent_request_text(query)
+                self.assertEqual(output["filters"].get("level"), expected)
+
+    def test_parse_common_parent_question_defaults_routes_to_expected_database(self):
+        cases = [
+            ("secondary", "學校 Banding 是官方資料嗎？"),
+            ("secondary", "Banding 係咪官方公開？"),
+            ("secondary", "升中統一派位乙部頭五志願點排？"),
+            ("primary", "35校網 vs 62校網點揀？"),
+            ("secondary", "自行面試通常問咩問題？"),
+            ("international", "外籍 passport 有入學優先嗎？"),
+            ("postsecondary", "海外學歷申請香港大學"),
+        ]
+        for expected, query in cases:
+            with self.subTest(query=query):
+                output = schoolfit_api.parse_parent_request_text(query)
+                self.assertEqual(output["filters"].get("level"), expected)
 
     def test_marketplace_demo_declares_clawhub_first_distribution(self):
         args = schoolfit_api.build_parser().parse_args([

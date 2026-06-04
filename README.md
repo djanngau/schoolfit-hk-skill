@@ -1,42 +1,24 @@
-# SchoolFit HK Skill for OpenClaw (v1.0.15)
+# SchoolFit HK Skill for OpenClaw
 
-OpenClaw / ArkAgent / Claude Code compatible skill for Hong Kong school selection using the public [SchoolFit HK](https://schoolfit.hk) API.
+Version: `1.0.15`
 
-Current service scope:
+SchoolFit HK lets OpenClaw, ArkAgent, Claude Code and compatible agents help Hong Kong families search, compare, shortlist and plan school applications through the public [SchoolFit HK](https://schoolfit.hk) Skill API.
 
-- 中學資料庫: 441 schools
-- 小學資料庫: 507 schools
-- 幼稚園資料庫: 955 schools
-- 國際學校資料庫: 103 schools
-- 專上教育庫: 35 institutions/options
+It is designed for parent-facing school advice, not raw data dumping: answers should explain what was understood, separate official facts from non-official Band references, show time-sensitive vacancy/admission caveats, and match the user's language in Traditional Chinese, Simplified Chinese or English.
 
-The skill wraps SchoolFit HK features for:
+## Current Coverage
 
-- smart advisor search with model-polishable briefs and intent routing
-- parent-query understanding with answer blueprints from the live Skill API
-- school search and detail lookup across secondary, primary, kindergarten, international, and postsecondary databases
-- school comparison
-- compact single-school decision briefs
-- Safe / Match / Reach recommendation buckets
-- EDB vacancy records
-- school admission notices
-- deep compare
-- single-school decision reports through the SchoolFit decision-brief API
-- practical application planning output
-- application plan with deadline reminders and parent checklist
-- fuzzy school-name resolution
-- shortlist buckets for 首選 / 穩陣 / 備選 / 暫不建議
-- stricter English-environment sorting and district/nearby-district ranking
-- robust district fallback search for API full-text/filter under-return cases
-- local package self-check
-- conservative source labeling and decision caveats
-- Traditional Chinese, Simplified Chinese, and English parent prompts, with final answers matched to the user's language
+| Database | Coverage |
+| --- | ---: |
+| 中學資料庫 | 441 schools |
+| 小學資料庫 | 507 schools |
+| 幼稚園資料庫 | 955 schools |
+| 國際學校資料庫 | 103 schools |
+| 專上教育庫 | 35 institutions/options |
 
 ## Install
 
-Default marketplace: ClawHub. Use skills.sh only as a secondary cross-agent index, and direct GitHub install as the final fallback.
-
-From ClawHub:
+ClawHub is the preferred marketplace for OpenClaw-native install, versioning, moderation and release checks.
 
 ```text
 openclaw skills install schoolfit-hk
@@ -45,78 +27,110 @@ clawhub install schoolfit-hk
 ark skill install clawhub:schoolfit-hk
 ```
 
-ClawHub listing: https://clawhub.ai/djanngau/schoolfit-hk
+ClawHub listing: [clawhub.ai/djanngau/schoolfit-hk](https://clawhub.ai/djanngau/schoolfit-hk)
 
-From skills.sh discovery:
-
-```text
-npx skills add djanngau/schoolfit-hk-skill
-```
-
-From GitHub:
+GitHub direct install remains available when a user or agent needs the exact source path:
 
 ```text
 /skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 ```
 
-## 30-Second Quick Start
+skills.sh can also discover the GitHub-backed skill:
 
-After installation, the Agent should first say:
+```text
+npx skills add djanngau/schoolfit-hk-skill
+```
+
+## First Run
+
+After installation, the Agent should ask the user to get a SchoolFit authorization code:
 
 ```text
 請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit 授權碼，複製後直接發到這個聊天窗口。我收到後就可以幫你查中學、小學、幼稚園、國際學校和專上教育資料，做比較、推薦和申請計劃。
 ```
 
-When the user pastes `sfhk_...`, the Agent keeps that code only in the active chat context and passes it to future helper calls as `--skill-code`. Do not write real user codes to files, logs, examples, commits, or marketplace material.
+When the user pastes a code such as `sfhk_...`, keep it only in the active chat context and pass it to helper calls as `--skill-code`. Do not write real user codes into files, logs, examples, commits, or marketplace material.
 
-Always show the authorization page as exactly `https://schoolfit.hk/skill-code`. If a copied link has `?`, `#`, tracking strings, or any path suffix after `/skill-code`, strip it back to the canonical URL before opening.
+Always show the authorization page as exactly `https://schoolfit.hk/skill-code`. If a copied link contains query strings, hash fragments, tracking parameters, or any path suffix after `/skill-code`, normalize it back to the canonical URL.
 
-## Safety Model
+## What It Can Do
 
-- Calls only `https://schoolfit.hk/api/...`.
-- Does not read local Edu databases, Prisma files, raw data snapshots, cookies, or `.env` files.
-- Rejects non-`schoolfit.hk` base URLs.
-- First run asks the user to open `https://schoolfit.hk/skill-code`, generate a trial code, copy it, and paste it back into the same chat window for the Agent.
-- Authorization-link handling is strict: only `https://schoolfit.hk/skill-code` is canonical; decorated links should be cleaned before use.
-- Sends `X-SchoolFit-Skill-Code`, `X-SchoolFit-Skill-Version`, and trace metadata for activation and anonymous telemetry. The code is not a payment token or student identity.
-- Keeps official facts, third-party Band references, community summaries, vacancies, and admissions notices separate.
-- Blocks obvious HKID, phone, and email input before API calls, and asks the user to remove sensitive data.
+- Understand parent questions and return `parentQuestion` plus `llmBrief.answerBlueprint` for polished model answers.
+- Search across secondary, primary, kindergarten, international and postsecondary databases.
+- Resolve fuzzy school names and common acronyms before detail lookups.
+- Build shortlists in `首選`, `穩陣`, `備選` and `暫不建議` buckets.
+- Produce Safe / Match / Reach style recommendation buckets where applicable.
+- Compare up to four schools and generate deeper decision differences.
+- Generate compact single-school decision briefs through the SchoolFit decision-brief API.
+- Build practical application plans with reminders and parent checklist items.
+- Query EDB vacancy records and school admission notices.
+- Rank more conservatively for English-environment, same-district, nearby-district and no-DSS preferences.
+- Use robust fallback search when full-text or district filters appear to under-return.
 
-## Marketplace Policy
+## Agent Answering Rules
 
-- ClawHub is the preferred registry for OpenClaw-native discovery, install, inspect, versioning, moderation, and release checks.
-- The project should not label its default market as SkillHub or `skillhub`.
-- Fallback order is ClawHub, then skills.sh, then GitHub direct search/install.
-- skills.sh is useful for broader Agent ecosystem discovery, but its API is authenticated and GitHub-index oriented, so it should not replace ClawHub as the OpenClaw default.
-- GitHub direct install remains available for exact-path installs and source review.
+- Use `advisor-search` as the main parent-advisory entrypoint.
+- Preserve `parentQuestion` and `llmBrief.answerBlueprint`; they reflect the live API's understanding of priorities, missing information and answer shape.
+- Keep official SchoolFit facts, non-official Band references, admission notices, vacancy data and assumptions visibly separate.
+- Say `Band 參考` or `非官方 Band 參考`; never call Banding official.
+- For vacancies, include source, data month, last seen time and a caveat that vacancy status is not an admission guarantee.
+- If the user rejects DSS/直資, do not place DSS schools in preferred buckets; put them in `暫不建議` with a clear preference warning.
+- If the user asks for English environment, rank EMI schools above mixed-medium schools and downgrade clearly unsuitable CMI schools unless the user relaxes the condition.
+- Ask for at most three missing inputs when needed: district/commute, Band reference and DSS/tuition preference.
+- Do not ask for student name, HKID, phone number, address, report-card PDFs or other personally identifiable data.
 
-## Local Smoke Test
+## CLI Examples
+
+These commands are mainly for agents, maintainers and release testing. Ordinary users should only need to paste the `sfhk_...` code in chat.
 
 ```bash
 export SCHOOLFIT_SKILL_CODE="PASTE_CODE_FROM_https://schoolfit.hk/skill-code"
+
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py quick-start --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py school-levels --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py activate "我的 SchoolFit 授權碼是 sfhk_xxxxxxxxxxxxxxxx" --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py metadata --format markdown
+
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py parse-parent-request --q "九龍城 Band 1 女校 英文環境 唔要直資 想穩陣" --format markdown
-python3 skills/schoolfit-hk/scripts/schoolfit_api.py self-check --format markdown
-python3 skills/schoolfit-hk/scripts/schoolfit_api.py search-schools --level secondary --q "沙田 Band 1 英文 男女校" --page-size 5 --format markdown
-python3 skills/schoolfit-hk/scripts/schoolfit_api.py search-schools --level primary --q "九龍城 小學 英文環境" --page-size 5 --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --q "沙田 Band 1 英文 男女校，重視校風，不考慮直資" --district "沙田區" --banding "Band 1" --no-dss --include-decision-brief --page-size 5 --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --level primary --q "九龍城 小學 英文環境 通勤短" --page-size 5 --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --level international --q "港島 國際學校 IB A-Level" --page-size 5 --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --level postsecondary --q "JUPAS HD 副學士 銜接" --page-size 5 --format markdown
+
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py resolve-school --name "SPCC" --format markdown
-python3 skills/schoolfit-hk/scripts/schoolfit_api.py shortlist-builder --q "沙田 Band 1 英文 男女校，想穩陣" --format markdown
-python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --q "沙田 Band 1 英文 男女校，重視校風，不考慮直資" --district "沙田區" --banding "Band 1" --no-dss --include-decision-brief --page-size 5 --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py shortlist-builder --q "沙田 Band 1 英文 男女校，想穩陣，不考慮直資" --no-dss --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py deep-compare sha-tin-methodist-college,ying-wa-girls-school --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py decision-brief sha-tin-methodist-college --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py application-plan --school-slugs sha-tin-methodist-college,ying-wa-girls-school --deadline-window-days 45 --format markdown
+
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py vacancies --grade S1 --has-vacancy true --page-size 5 --format markdown
-python3 skills/schoolfit-hk/scripts/schoolfit_api.py school-report sha-tin-methodist-college --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py admissions --grade S1 --is-active true --q "申請" --page-size 5 --format markdown
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py self-check --format markdown
 python3 -m unittest discover -s tests
 ```
 
 Use compact Skill API payloads by default. Add `--verbose` only when a tester or agent explicitly needs raw vacancy/admission arrays, full source ledgers, or audit evidence.
 
-For parent advisory flows, preserve `parentQuestion` and `llmBrief.answerBlueprint` from `advisor-search`; they are the live API's current understanding of the family's priorities, missing information and recommended answer shape.
+## Safety Boundary
+
+- Calls only `https://schoolfit.hk/api/...`.
+- Rejects non-`schoolfit.hk` base URLs, custom schemes, credentials and custom ports.
+- Does not read local Edu databases, Prisma files, SQLite files, raw data snapshots, cookies, `.env` files or private API keys.
+- Does not call `/api/agent/chat` in v1, avoiding LLM cost and persistent session creation.
+- Sends `X-SchoolFit-Skill-Code`, `X-SchoolFit-Skill-Version` and trace metadata for activation, rate limiting and anonymous telemetry.
+- Treats the authorization code as a trial-run API/telemetry key, not a payment token, password or student identity.
+- Blocks obvious HKID, phone and email input before API calls and asks the user to remove sensitive data.
 
 ## Marketplace Summary
 
-SchoolFit HK helps agents search, compare, and recommend Hong Kong schools across secondary, primary, kindergarten, international, and postsecondary schoolfit.hk public APIs, with conservative source labeling for official facts, Band references where applicable, vacancy data, and admission notices.
+SchoolFit HK helps agents search, compare, shortlist and recommend Hong Kong schools across secondary, primary, kindergarten, international and postsecondary SchoolFit HK public APIs, with conservative source labeling for official facts, non-official Band references where applicable, vacancy data and admission notices.
+
+## Release Notes
+
+- Current ClawHub version: `1.0.15`
+- ClawHub slug: `schoolfit-hk`
+- Owner: `djanngau`
+- Repository: [github.com/djanngau/schoolfit-hk-skill](https://github.com/djanngau/schoolfit-hk-skill)
+- Primary marketplace: ClawHub
+- Fallback discovery: skills.sh, then GitHub direct install
