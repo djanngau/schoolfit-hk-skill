@@ -1,6 +1,6 @@
 # SchoolFit HK Skill for OpenClaw
 
-Version: `1.0.15`
+Version: `1.0.16`
 
 SchoolFit HK lets OpenClaw, ArkAgent, Claude Code and compatible agents help Hong Kong families search, compare, shortlist and plan school applications through the public [SchoolFit HK](https://schoolfit.hk) Skill API.
 
@@ -128,7 +128,7 @@ SchoolFit HK helps agents search, compare, shortlist and recommend Hong Kong sch
 
 ## Release Notes
 
-- Current ClawHub version: `1.0.15`
+- Current ClawHub version: `1.0.16`
 - ClawHub slug: `schoolfit-hk`
 - Owner: `djanngau`
 - Repository: [github.com/djanngau/schoolfit-hk-skill](https://github.com/djanngau/schoolfit-hk-skill)
