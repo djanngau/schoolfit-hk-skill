@@ -23,8 +23,8 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.0.16"
-SKILL_VERSION_HEADER_VERSION = "1.0.16"
+SKILL_VERSION = "1.0.17"
+SKILL_VERSION_HEADER_VERSION = "1.0.17"
 MAX_COMPARE_IDS = 4
 ROBUST_SEARCH_PAGE_SIZE = 1000
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
@@ -53,6 +53,10 @@ EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECAS
 PII_WARNING_MESSAGE = (
     "為保護學生私隱，請不要在 Skill 請求中提供學生全名、HKID、電話、住址、成績表 PDF 或其他可識別個人資料。"
 )
+OFF_TOPIC_BOUNDARY_MESSAGE = (
+    "我只處理香港找學校、比較學校、學額、招生、申請計劃和升學路線問題。"
+    "這個問題不屬於 SchoolFit HK 範圍，所以不會使用 SchoolFit Skill 或大模型 API。"
+)
 SCHOOLFIT_SKILL_CONFIG_ENV = "SCHOOLFIT_SKILL_CODE"
 SCHOOLFIT_SKILL_LEGACY_CODE_ENV = "SCHOOLFIT_SKILL_API_CODE"
 SCHOOLFIT_SKILL_CONFIG_PATH_ENV = "SCHOOLFIT_SKILL_CONFIG"
@@ -75,6 +79,19 @@ SCHOOL_LEVEL_COUNTS = {
     "kindergarten": 955,
     "international": 103,
     "postsecondary": 35,
+}
+DATA_ARCHITECTURE_CONTRACT = {
+    "canonicalStore": "Prisma/SQLite",
+    "runtimeSnapshot": {
+        "role": "DB-built read cache/fallback",
+        "source": "SchoolFit API metadata or skill search index",
+    },
+    "listIndexes": {
+        "role": "lightweight list/search indexes",
+        "levels": SCHOOL_LEVEL_COUNTS,
+    },
+    "sourceJsonPolicy": "ingest-seed-audit-only",
+    "redisPolicy": "not-primary-store",
 }
 SCHOOL_LEVEL_PROMPTS = {
     "secondary": [
@@ -435,7 +452,9 @@ def build_source_ledger() -> dict[str, Any]:
         "assumptions": [
             "No local Edu DB is read.",
             "No PII or private profile data is persisted.",
+            "Runtime facts come from SchoolFit API services backed by DB-built snapshot/search indexes.",
         ],
+        "dataArchitecture": DATA_ARCHITECTURE_CONTRACT,
     }
 
 
@@ -673,6 +692,7 @@ def command_text_fields(args: argparse.Namespace) -> dict[str, str]:
     fields: dict[str, str] = {}
     for key in (
         "q",
+        "name",
         "notes",
         "personality",
         "application_goal",
@@ -723,6 +743,69 @@ def privacy_warning_output(command: str, trace_id: TraceId, findings: list[dict[
         "skillVersion": SKILL_VERSION,
         "traceId": trace_id,
         "sourceLedger": build_source_ledger(),
+    }
+
+
+OFF_TOPIC_PATTERNS = (
+    "你是什麼模型", "你是什么模型", "你是哪個模型", "你是哪个模型", "你用什麼模型", "你用什么模型",
+    "大模型信息", "大模型資訊", "模型信息", "模型資訊", "模型版本", "model version",
+    "system prompt", "系統提示詞", "系统提示词", "提示詞", "提示词", "developer message",
+    "ignore previous instructions", "忽略以上指令", "忽略之前指令", "越獄", "越狱", "jailbreak",
+    "消耗 token", "消耗token", "浪費 token", "浪费 token", "burn token", "waste token",
+    "重複輸出", "重复输出", "一直輸出", "一直输出", "repeat forever", "infinite loop",
+    "api key", "密鑰", "密钥", "洩露", "泄露", "credentials",
+)
+
+
+SCHOOL_CONTEXT_PATTERNS = (
+    "學校", "学校", "中學", "中学", "小學", "小学", "幼稚園", "幼稚园", "國際學校", "国际学校",
+    "專上", "专上", "大學", "大学", "jupas", "dse", "band", "banding", "升中", "升小",
+    "學額", "学额", "招生", "申請", "申请", "school", "kindergarten", "admission", "vacancy",
+)
+
+
+def is_off_topic_or_abuse_text(text: str | None) -> bool:
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    lowered = raw.lower()
+    if not contains_any_text(raw, lowered, OFF_TOPIC_PATTERNS):
+        return False
+    # Keep legitimate school-domain phrases such as "school model answer" from
+    # being blocked just because they contain a broad word like "model".
+    return not contains_any_text(raw, lowered, SCHOOL_CONTEXT_PATTERNS)
+
+
+def detect_off_topic_input(args: argparse.Namespace) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    for field, text in command_text_fields(args).items():
+        if is_off_topic_or_abuse_text(text):
+            findings.append({"field": field, "type": "off_topic_or_model_abuse"})
+    return findings
+
+
+def off_topic_boundary_output(command: str, trace_id: TraceId, findings: list[dict[str, str]] | None = None) -> dict[str, Any]:
+    return {
+        "offTopicBoundary": True,
+        "blocked": True,
+        "command": command,
+        "shouldUseSchoolFitSkill": False,
+        "shouldCallSchoolFitApi": False,
+        "shouldCallModelApi": False,
+        "message": OFF_TOPIC_BOUNDARY_MESSAGE,
+        "friendlyMessage": (
+            "我可以幫你找香港中學、小學、幼稚園、國際學校或專上教育選項；"
+            "如果要繼續，請改問地區、年級、Band 參考、學費、學額、招生或比較學校。"
+        ),
+        "allowedExamples": [
+            "沙田 Band 1 英文男女校，不考慮直資。",
+            "九龍城小學，英文環境，通勤短。",
+            "港島國際學校 Year 7 插班和學費。",
+            "JUPAS、HD/副學士銜接有咩選擇？",
+        ],
+        "detected": findings or [],
+        "skillVersion": SKILL_VERSION,
+        "traceId": trace_id,
     }
 
 
@@ -804,21 +887,86 @@ GRADE_ALIASES = {
     "中一": "S1",
     "初一": "S1",
     "form 1": "S1",
+    "f1": "S1",
+    "year 7": "S1",
+    "year7": "S1",
+    "grade 7": "S1",
+    "grade7": "S1",
     "中二": "S2",
     "初二": "S2",
     "form 2": "S2",
+    "f2": "S2",
+    "year 8": "S2",
+    "year8": "S2",
+    "grade 8": "S2",
+    "grade8": "S2",
     "中三": "S3",
     "初三": "S3",
     "form 3": "S3",
+    "f3": "S3",
+    "year 9": "S3",
+    "year9": "S3",
+    "grade 9": "S3",
+    "grade9": "S3",
     "中四": "S4",
     "高一": "S4",
     "form 4": "S4",
+    "f4": "S4",
+    "year 10": "S4",
+    "year10": "S4",
+    "grade 10": "S4",
+    "grade10": "S4",
     "中五": "S5",
     "高二": "S5",
     "form 5": "S5",
+    "f5": "S5",
+    "year 11": "S5",
+    "year11": "S5",
+    "grade 11": "S5",
+    "grade11": "S5",
     "中六": "S6",
     "高三": "S6",
     "form 6": "S6",
+    "f6": "S6",
+    "year 12": "S6",
+    "year12": "S6",
+    "year 13": "S6",
+    "year13": "S6",
+    "grade 12": "S6",
+    "grade12": "S6",
+    "小一": "P1",
+    "p1": "P1",
+    "year 1": "P1",
+    "year1": "P1",
+    "小二": "P2",
+    "p2": "P2",
+    "year 2": "P2",
+    "year2": "P2",
+    "小三": "P3",
+    "p3": "P3",
+    "year 3": "P3",
+    "year3": "P3",
+    "小四": "P4",
+    "p4": "P4",
+    "year 4": "P4",
+    "year4": "P4",
+    "小五": "P5",
+    "p5": "P5",
+    "year 5": "P5",
+    "year5": "P5",
+    "小六": "P6",
+    "p6": "P6",
+    "year 6": "P6",
+    "year6": "P6",
+    "k1": "K1",
+    "k2": "K2",
+    "k3": "K3",
+    "pn": "PN",
+    "n1": "PN",
+    "n班": "PN",
+    "n 班": "PN",
+    "pre-nursery": "PN",
+    "pre nursery": "PN",
 }
 
 SCHOOL_LEVEL_ALIASES = {
@@ -1023,9 +1171,9 @@ def is_vacancy_query(raw: str, lowered: str) -> bool:
     if infer_school_level_from_common_question(raw, lowered) == "postsecondary":
         return False
     if contains_any_text(raw, lowered, (
-        "學額", "学额", "插班", "插班位", "空位", "餘額", "余额",
+        "學額", "学额", "插班", "插班位", "轉校", "转校", "空位", "餘額", "余额", "後補", "后补",
         "有冇位", "有位", "有无位", "vacancy", "vacancies", "available places",
-        "places available", "seats available", "有無位", "有无位", "冇位", "無位", "无位",
+        "places available", "seats available", "transfer", "waiting list", "waitlist", "有無位", "有无位", "冇位", "無位", "无位",
     )):
         return True
     if contains_any_text(raw, lowered, ("學位", "学位", "places", "seats")) and not is_allocation_context(raw, lowered):
@@ -1055,9 +1203,9 @@ def infer_school_level_from_common_question(raw: str, lowered: str) -> str | Non
     if contains_any_text(raw, lowered, (
         "直屬中學", "直属中学", "聯繫中學", "联系中学", "中學位", "中学位",
         "自行分配兩個", "自行分配两个", "兩個 choice", "两个 choice", "choice 次序",
-        "banding reference", "自行分配面試", "自行分配面试", "中學學位分配", "中学学位分配",
+        "banding reference", "自行分配面試", "自行分配面试", "中學學位分配", "中学学位分配", "英中",
         "自行分配學位面試", "自行分配学位面试",
-        "小六呈分後升中", "小六呈分后升中", "小六操行", "呈分後升中", "呈分后升中",
+        "小六呈分試", "小六呈分试", "小六呈分後升中", "小六呈分后升中", "小六操行", "呈分後升中", "呈分后升中",
         "heep yunn", "想轉直資中學", "想转直资中学", "嘉諾撒聖瑪利書院", "嘉诺撒圣玛利书院",
         "st francis xavier college", "中六轉校", "中六转校", "f1 admission",
         "學校 banding", "学校 banding", "banding 係咪官方", "banding 系咪官方",
@@ -1085,7 +1233,7 @@ def infer_school_level_from_common_question(raw: str, lowered: str) -> str | Non
         "nomination right", "boarding fees", "國際學校 waiting list", "国际学校 waiting list",
         "gsis", "german stream", "hkis", "american curriculum", "malvern college hong kong",
         "malvern college pre-school", "nord anglia", "international primary", "international kindergarten",
-        "discovery college", "dbis", "american school hong kong", "shrewsbury", "wycombe abbey",
+        "discovery college", "dbis", "hong kong academy", "american school hong kong", "shrewsbury", "wycombe abbey",
         "mount kelly", "invictus school", "delia school of canada", "woodland pre-schools",
         "外籍 passport", "foreign passport",
     )):
@@ -1125,7 +1273,7 @@ def detect_response_language(raw: str, lowered: str) -> str:
         return "zh-Hans"
     if contains_any_text(raw, lowered, ("用繁體", "繁體回答", "繁体回答", "traditional chinese", "zh-hant")):
         return "zh-Hant"
-    simplified_markers = ("学校", "学额", "学位", "申请", "报名", "推荐", "建议", "适合", "稳阵", "直资", "环境")
+    simplified_markers = ("学校", "学额", "学位", "申请", "报名", "推荐", "建议", "适合", "稳阵", "直资", "环境", "区")
     if any(marker in raw for marker in simplified_markers):
         return "zh-Hans"
     if raw and all(ord(char) < 128 for char in raw):
@@ -1149,6 +1297,34 @@ def parse_parent_request_text(text: str | None) -> dict[str, Any]:
         "confidence": "medium" if raw else "low",
         "conversationHints": [],
     }
+    if is_off_topic_or_abuse_text(raw):
+        return {
+            **off_topic_boundary_output("parse-parent-request", next_trace_id(), [{"field": "q", "type": "off_topic_or_model_abuse"}]),
+            "rawText": raw,
+            "responseLanguage": response_language,
+            "filters": {},
+            "recommendationSignals": {"responseLanguage": response_language},
+            "intentHints": [],
+            "privacy": parsed["privacy"],
+            "confidence": "high",
+            "missingInfoQuestions": [],
+            "friendlySummary": [],
+            "friendlyFollowUp": {
+                "opening": OFF_TOPIC_BOUNDARY_MESSAGE,
+                "askMissingInfo": "請改問香港找學校、比較學校、學額、招生或升學路線相關問題。",
+                "questions": [],
+                "privacyReminder": "不用提供姓名、HKID、電話、住址或成績表原件。",
+                "sourceReminder": "SchoolFit HK 只會在學校查詢範圍內使用資料來源。",
+            },
+            "llmBrief": {
+                "command": "parse-parent-request",
+                "factsOnly": True,
+                "shouldUseSchoolFitSkill": False,
+                "shouldCallSchoolFitApi": False,
+                "shouldCallModelApi": False,
+                "answer": OFF_TOPIC_BOUNDARY_MESSAGE,
+            },
+        }
     filters = parsed["filters"]
     signals = parsed["recommendationSignals"]
     signals["responseLanguage"] = response_language
@@ -1177,7 +1353,7 @@ def parse_parent_request_text(text: str | None) -> dict[str, Any]:
             signals["region"] = region
             break
 
-    band_match = re.search(r"band\s*([123])\s*([abc])?", lowered, re.IGNORECASE)
+    band_match = re.search(r"band\s*([123])(?:\s*([abc])\b)?", lowered, re.IGNORECASE)
     if band_match:
         band = f"Band {band_match.group(1)}"
         if band_match.group(2):
@@ -1188,24 +1364,27 @@ def parse_parent_request_text(text: str | None) -> dict[str, Any]:
     if contains_any_text(raw, lowered, ("男女校", "男女", "co-ed", "coed", "co-educational", "mixed school", "mixed gender")):
         filters["gender"] = "男女校"
         signals["gender"] = "男女校"
-    elif contains_any_text(raw, lowered, ("女校", "girls", "girl school", "girls school", "girls' school")):
-        filters["gender"] = "女校"
-        signals["gender"] = "女校"
-    elif contains_any_text(raw, lowered, ("男校", "boys", "boy school", "boys school", "boys' school")):
+    elif contains_any_text(raw, lowered, ("改成男校", "換成男校", "换成男校", "男校", "男仔", "男生", "boys", "boy school", "boys school", "boys' school")):
         filters["gender"] = "男校"
         signals["gender"] = "男校"
+    elif contains_any_text(raw, lowered, ("女校", "女仔", "女生", "girls", "girl school", "girls school", "girls' school")):
+        filters["gender"] = "女校"
+        signals["gender"] = "女校"
 
-    if contains_any_text(raw, lowered, ("英文中學", "英文中学", "英中", "英文", "english medium", "english-medium", "emi", "english environment")):
+    if contains_any_text(raw, lowered, ("英文中學", "英文中学", "英中", "英文", "english medium", "english-medium", "english primary", "english school", "emi", "english environment")):
         filters["medium"] = "英文"
         signals["medium"] = "英文"
         signals["languagePriority"] = "英文環境"
+    elif contains_any_text(raw, lowered, ("中英並重", "中英并重", "雙語", "双语", "bilingual")):
+        filters["medium"] = "中英並重"
+        signals["medium"] = "中英並重"
     elif contains_any_text(raw, lowered, ("中文中學", "中文中学", "中中", "中文", "chinese medium", "chinese-medium", "cmi")):
         filters["medium"] = "中文"
         signals["medium"] = "中文"
 
     if contains_any_text(raw, lowered, ("直資", "直资", "dss", "direct subsidy")):
         rejects_dss = contains_any_text(raw, lowered, (
-            "不要直資", "唔要直資", "不接受直資", "不考慮直資",
+            "不要直資", "唔要直資", "唔考慮直資", "不接受直資", "不考慮直資",
             "不要直资", "不接受直资", "不考虑直资",
             "no dss", "not dss", "without dss", "reject dss", "no direct subsidy", "not direct subsidy",
         ))
@@ -1216,12 +1395,34 @@ def parse_parent_request_text(text: str | None) -> dict[str, Any]:
         filters["fundingType"] = "官立"
     if contains_any_text(raw, lowered, ("資助", "资助", "aided")):
         filters["fundingType"] = "資助"
+    if "fundingType" not in filters and contains_any_text(raw, lowered, ("私立", "私校", "private school", "private")):
+        filters["fundingType"] = "私立"
+    if contains_any_text(raw, lowered, ("天主教", "catholic")):
+        filters["religion"] = "天主教"
+    elif contains_any_text(raw, lowered, ("基督教", "christian", "protestant")):
+        filters["religion"] = "基督教"
+    elif contains_any_text(raw, lowered, ("佛教", "buddhist")):
+        filters["religion"] = "佛教"
+    elif contains_any_text(raw, lowered, ("伊斯蘭", "伊斯兰", "islamic", "muslim")):
+        filters["religion"] = "伊斯蘭教"
 
-    for label, grade in GRADE_ALIASES.items():
-        if (label.isascii() and label in lowered) or (not label.isascii() and label in raw):
-            filters["vacancyGrade"] = grade
-            signals["grade"] = grade
-            break
+    if filters.get("level") == "kindergarten":
+        for label, grade in (
+            ("k1", "K1"), ("k2", "K2"), ("k3", "K3"),
+            ("pn", "PN"), ("n1", "PN"), ("n班", "PN"), ("n 班", "PN"),
+            ("pre-nursery", "PN"), ("pre nursery", "PN"),
+        ):
+            if (label.isascii() and label in lowered) or (not label.isascii() and (label in raw or label in lowered)):
+                filters["vacancyGrade"] = grade
+                signals["grade"] = grade
+                break
+
+    if "vacancyGrade" not in filters:
+        for label, grade in GRADE_ALIASES.items():
+            if (label.isascii() and label in lowered) or (not label.isascii() and (label in raw or label in lowered)):
+                filters["vacancyGrade"] = grade
+                signals["grade"] = grade
+                break
     grade_match = re.search(r"\bS([1-6])\b", raw, re.IGNORECASE)
     if grade_match:
         filters["vacancyGrade"] = f"S{grade_match.group(1)}"
@@ -1230,7 +1431,7 @@ def parse_parent_request_text(text: str | None) -> dict[str, Any]:
     if is_vacancy_query(raw, lowered):
         parsed["intentHints"].append("vacancy")
         filters["hasVacancy"] = True
-    if contains_any_text(raw, lowered, ("招生", "通告", "截止", "申請", "申请", "報名", "报名", "deadline", "deadlines", "admission", "admissions", "application", "apply")):
+    if contains_any_text(raw, lowered, ("招生", "通告", "截止", "申請", "申请", "報名", "报名", "自行面試", "自行面试", "叩門", "叩门", "推薦信", "推荐信", "deadline", "deadlines", "admission", "admissions", "application", "applicant", "apply")):
         parsed["intentHints"].append("admissions")
     if contains_any_text(raw, lowered, ("比較", "对比", "對比", "vs", "compare", "comparison", "versus")):
         parsed["intentHints"].append("compare")
@@ -1732,6 +1933,7 @@ def school_levels_output(trace_id: TraceId) -> dict[str, Any]:
             "中學場景才把 Band 參考視為核心條件；小學、幼稚園、國際學校和專上教育不要套用升中 Band 假設。",
             "所有答案都要分開官方資料、非官方 Band/口碑參考、學額和招生時效。",
         ],
+        "dataArchitecture": DATA_ARCHITECTURE_CONTRACT,
         "skillVersion": SKILL_VERSION,
         "traceId": trace_id,
         "sourceLedger": build_source_ledger(),
@@ -1888,7 +2090,9 @@ def self_check_output() -> dict[str, Any]:
         ("host_allowlist", "ALLOWED_HOSTS = {\"schoolfit.hk\"}" in script),
         ("activation_page", ACTIVATION_PAGE_URL in script),
         ("pii_guard", "detect_sensitive_input" in script),
+        ("off_topic_boundary", "detect_off_topic_input" in script and "shouldCallModelApi" in script),
         ("no_agent_chat_default", chat_path not in script),
+        ("data_architecture_contract", "DATA_ARCHITECTURE_CONTRACT" in script and "not-primary-store" in script),
     ]
     for name, passed in script_checks:
         ok = ok and passed
@@ -1903,6 +2107,7 @@ def self_check_output() -> dict[str, Any]:
             "This is a local package sanity check; it does not call SchoolFit APIs.",
             "Run unit tests and a live metadata smoke test before marketplace release.",
         ],
+        "dataArchitecture": DATA_ARCHITECTURE_CONTRACT,
         "sourceLedger": build_source_ledger(),
     }
 
@@ -2115,13 +2320,18 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
         output["sourceLedger"] = source_ledger
         return output
     if command == "metadata":
+        data_architecture = payload.get("dataArchitecture") if isinstance(payload.get("dataArchitecture"), dict) else DATA_ARCHITECTURE_CONTRACT
         return {
             **payload,
+            "dataArchitecture": data_architecture,
             "notes": [
                 "Metadata provides capability status, filter support, and usage snapshot for /api/skill endpoints.",
                 "這個端點不返回學校資料，只返回可用 API 面向與流量狀態。"
             ],
-            "sourceLedger": build_source_ledger(),
+            "sourceLedger": {
+                **build_source_ledger(),
+                "dataArchitecture": data_architecture,
+            },
         }
     return payload
 
@@ -2788,6 +2998,13 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         for item in data.get("allowedAlternatives", []):
             print(f"- {item}")
         return
+    if data.get("offTopicBoundary"):
+        print("## SchoolFit HK 範圍\n")
+        print(data.get("friendlyMessage") or data.get("message") or OFF_TOPIC_BOUNDARY_MESSAGE)
+        print("\n### 可以改問")
+        for item in data.get("allowedExamples", []):
+            print(f"- {item}")
+        return
     if command == "quick-start":
         print("## SchoolFit HK Skill 快速開始\n")
         if data.get("friendlyOpening"):
@@ -2817,6 +3034,13 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         print("### 建議流程")
         for step in data.get("recommendedFlow", []):
             print(f"- {step}")
+        architecture = data.get("dataArchitecture") or {}
+        if architecture:
+            print("\n### 資料結構")
+            print(f"- canonical store: {architecture.get('canonicalStore')}")
+            print(f"- runtime snapshot: {(architecture.get('runtimeSnapshot') or {}).get('role')}")
+            print(f"- list indexes: {(architecture.get('listIndexes') or {}).get('role')}")
+            print(f"- Redis: {architecture.get('redisPolicy')}")
         return
     if command == "parse-parent-request":
         print("## 我先幫你整理到這裡\n")
@@ -2855,6 +3079,12 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         print(f"狀態: {'OK' if data.get('ok') else '需要處理'}")
         for check in data.get("checks", []):
             print(f"- {'OK' if check.get('ok') else 'FAIL'} {check.get('name')}")
+        architecture = data.get("dataArchitecture") or {}
+        if architecture:
+            print("\n### 資料結構")
+            print(f"- canonical store: {architecture.get('canonicalStore')}")
+            print(f"- source JSON: {architecture.get('sourceJsonPolicy')}")
+            print(f"- Redis: {architecture.get('redisPolicy')}")
         return
     if command == "activate":
         print("## SchoolFit HK 授權狀態\n")
@@ -3521,6 +3751,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     sensitive_findings = detect_sensitive_input(args)
     if sensitive_findings:
         return privacy_warning_output(command, trace_id, sensitive_findings)
+
+    off_topic_findings = detect_off_topic_input(args)
+    if off_topic_findings:
+        return off_topic_boundary_output(command, trace_id, off_topic_findings)
 
     if command == "advisor-search":
         apply_parsed_request_to_args(args)
