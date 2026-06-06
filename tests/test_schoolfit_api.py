@@ -1875,6 +1875,58 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertNotIn("zh-Hant", rendered)
         self.assertNotIn("資料庫名稱", rendered)
 
+    def test_primary_search_markdown_does_not_show_band_reference(self):
+        output = schoolfit_api.compact_output("search-schools", {
+            "count": 1,
+            "schools": [{
+                "slug": "demo-primary",
+                "level": "primary",
+                "levelLabel": "小學",
+                "nameZh": "示例小學",
+                "district": "九龍城區",
+                "fundingType": "資助",
+                "mediumOfInstruction": "中文",
+            }],
+        })
+        buffer = StringIO()
+        with redirect_stdout(buffer):
+            schoolfit_api.print_markdown("search-schools", output)
+        rendered = buffer.getvalue()
+        self.assertIn("示例小學", rendered)
+        self.assertNotIn("Band 參考", rendered)
+        self.assertNotIn("Banding references", rendered)
+
+    def test_primary_advisor_brief_and_next_actions_do_not_request_band(self):
+        output = schoolfit_api.compact_advisor_search({
+            "query": "九龍城小學 英文環境",
+            "filters": {"level": "primary", "district": "九龍城區"},
+            "intent": "search",
+            "parentQuestion": {
+                "detectedSignals": {"level": "primary", "district": "九龍城區"},
+                "answerStrategy": {"primaryIntent": "search", "missingInfo": []},
+            },
+            "search": {
+                "count": 1,
+                "schools": [{
+                    "slug": "demo-primary",
+                    "level": "primary",
+                    "levelLabel": "小學",
+                    "nameZh": "示例小學",
+                    "district": "九龍城區",
+                    "fundingType": "資助",
+                    "mediumOfInstruction": "英文",
+                }],
+            },
+        })
+        serialized = json.dumps({
+            "mustMention": output["llmBrief"]["mustMention"],
+            "nextActions": output["nextActions"],
+            "notes": output["notes"],
+        }, ensure_ascii=False)
+        self.assertNotIn("Band", serialized)
+        self.assertNotIn("band", serialized)
+        self.assertIn("課程/語言", serialized)
+
     def test_advisor_search_applies_parsed_filters(self):
         args = schoolfit_api.build_parser().parse_args([
             "--skill-code",
@@ -2278,7 +2330,7 @@ class SchoolFitApiTests(unittest.TestCase):
         handoff = brief["agentHandoff"]
         self.assertEqual(handoff["consumer"], "downstream_ai_model")
         self.assertTrue(handoff["languagePolicy"]["matchUserLanguage"])
-        self.assertIn("Never call Banding official", " ".join(handoff["hardRules"]))
+        self.assertIn("secondary-school answers only", " ".join(handoff["hardRules"]))
         self.assertIn("student full name", handoff["followUpPolicy"]["doNotAskFor"])
         self.assertTrue(handoff["contactPolicy"]["schoolContactAllowed"])
         self.assertIn("official school phone", handoff["contactPolicy"]["allowedFields"])

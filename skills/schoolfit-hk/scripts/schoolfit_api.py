@@ -23,8 +23,8 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.0.18"
-SKILL_VERSION_HEADER_VERSION = "1.0.18"
+SKILL_VERSION = "1.0.19"
+SKILL_VERSION_HEADER_VERSION = "1.0.19"
 MAX_COMPARE_IDS = 4
 ROBUST_SEARCH_PAGE_SIZE = 1000
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
@@ -1910,7 +1910,7 @@ def build_ranking_rationale(school: dict[str, Any]) -> list[str]:
         reasons.append(f"地區匹配: {school.get('district')}")
     if school.get("mediumOfInstruction"):
         reasons.append(f"授課語言: {school.get('mediumOfInstruction')}")
-    if school.get("bandingReference") or school.get("banding"):
+    if school_uses_banding(school) and (school.get("bandingReference") or school.get("banding")):
         reasons.append(f"Band 參考: {school.get('bandingReference') or school.get('banding')}")
     vacancy = school.get("vacancySummary") or {}
     if vacancy.get("hasAnyVacancy") is True:
@@ -2110,14 +2110,15 @@ def shortlist_score(school: dict[str, Any], signals: dict[str, Any]) -> tuple[in
 
     band = str(school.get("bandingReference") or "")
     target_band = str(signals.get("banding") or "")
-    if target_band and target_band in band:
-        score += 22
-        reasons.append("Band 參考匹配")
-    elif "Band 1" in band:
-        score += 14
-        reasons.append("Band 1 參考")
-    elif band:
-        score += 4
+    if school_uses_banding(school):
+        if target_band and target_band in band:
+            score += 22
+            reasons.append("Band 參考匹配")
+        elif "Band 1" in band:
+            score += 14
+            reasons.append("Band 1 參考")
+        elif band:
+            score += 4
 
     if school.get("fundingType") == "資助":
         score += 5
@@ -2163,7 +2164,7 @@ def standard_llm_brief(command: str, purpose: str, must_mention: list[str], fact
         "recommendedTone": "Use the user's language: Traditional Chinese, Simplified Chinese, or English. Keep Hong Kong school terms precise; polish tone but never add school facts not returned by the API.",
         "factsOnly": True,
         "doNotInvent": [
-            "不要新增學校排名、錄取機率、官方 Band、未返回的學費或截止日。",
+            "不要新增學校排名、錄取機率、未返回的學費或截止日。",
             "資料缺失時寫暫無可靠資料。",
         ],
         "mustMention": must_mention,
@@ -2194,7 +2195,7 @@ def with_agent_handoff(brief: dict[str, Any]) -> dict[str, Any]:
             "matchUserLanguage": True,
             "supported": ["zh-Hant", "zh-Hans", "en"],
             "default": "zh-Hant",
-            "preserveHongKongTerms": ["Band 參考", "直資/DSS", "資助/aided", "官立/government", "EMI/CMI"],
+            "preserveHongKongTerms": ["Band 參考（僅中學適用）", "直資/DSS", "資助/aided", "官立/government", "EMI/CMI"],
         },
         "responsePlan": [
             "Start with one short conclusion or clarification of the family's goal.",
@@ -2204,7 +2205,7 @@ def with_agent_handoff(brief: dict[str, Any]) -> dict[str, Any]:
             "End with 2-3 concrete next actions or at most three missing-info questions.",
         ],
         "hardRules": [
-            "Never call Banding official; use Band 參考 or 非官方 Band 參考.",
+            "For secondary-school answers only, never call Banding official; use Band 參考 or 非官方 Band 參考.",
             "Never describe vacancy as admission guarantee.",
             "Never ask for or repeat HKID, phone, address, full student name, report-card PDFs, or private documents.",
             "Never expose raw JSON unless the user explicitly asks for API/debug output.",
@@ -2360,7 +2361,7 @@ def school_levels_output(trace_id: TraceId) -> dict[str, Any]:
             "先用 parse-parent-request 理解家長自然語言和資料庫階段。",
             "查詢時優先用 advisor-search；若已確定階段，可加 --level。",
             "中學場景才把 Band 參考視為核心條件；小學、幼稚園、國際學校和專上教育不要套用升中 Band 假設。",
-            "所有答案都要分開官方資料、非官方 Band/口碑參考、學額和招生時效。",
+            "所有答案都要分開官方資料、口碑參考、學額和招生時效；只有中學答案才加入非官方 Band 參考。",
         ],
         "dataArchitecture": DATA_ARCHITECTURE_CONTRACT,
         "skillVersion": SKILL_VERSION,
@@ -2549,8 +2550,56 @@ def school_level_value(school: dict[str, Any]) -> str | None:
     return str(level) if level else None
 
 
+def is_secondary_level(level: Any) -> bool:
+    normalized = str(level or "").strip().lower()
+    return normalized in {"secondary", "中學", "中学", "中學資料庫", "中学资料库"}
+
+
+def school_uses_banding(school: dict[str, Any]) -> bool:
+    explicit_level = school_level_value(school) or school.get("levelLabel")
+    if explicit_level:
+        return is_secondary_level(explicit_level)
+    return bool(school.get("bandingReference") or school.get("banding"))
+
+
+def has_secondary_context(data: Any) -> bool:
+    if not isinstance(data, dict):
+        return False
+    school = data.get("school")
+    if isinstance(school, dict) and school_uses_banding(school):
+        return True
+    schools = data.get("schools")
+    if isinstance(schools, list) and any(isinstance(item, dict) and school_uses_banding(item) for item in schools):
+        return True
+    search = data.get("search")
+    if isinstance(search, dict) and has_secondary_context(search):
+        return True
+    compare = data.get("compare")
+    if isinstance(compare, dict) and has_secondary_context(compare):
+        return True
+    parent_question = data.get("parentQuestion")
+    if isinstance(parent_question, dict):
+        detected = parent_question.get("detectedSignals")
+        if isinstance(detected, dict) and is_secondary_level(detected.get("level")):
+            return True
+    filters = data.get("filters")
+    if isinstance(filters, dict) and is_secondary_level(filters.get("level")):
+        return True
+    return False
+
+
 def school_banding_reference(school: dict[str, Any]) -> Any:
     return school.get("bandingReference") or school.get("banding")
+
+
+def filtered_source_notes(data: Any = None, *, include_banding: bool | None = None) -> list[str]:
+    show_banding = has_secondary_context(data) if include_banding is None else include_banding
+    if show_banding:
+        return SOURCE_NOTES
+    return [
+        "Official facts should be treated separately from parent/community summaries, vacancy signals, and admission notices.",
+        *[note for note in SOURCE_NOTES if "Band" not in note and "Banding" not in note],
+    ]
 
 
 def compact_school(school: dict[str, Any]) -> dict[str, Any]:
@@ -2666,8 +2715,8 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
             "pagination": payload.get("pagination"),
             "robustSearch": payload.get("robustSearch"),
             "sourceLedger": source_ledger,
-            "notes": SOURCE_NOTES,
         }
+        output["notes"] = filtered_source_notes(output)
         for school in payload.get("schools", []):
             add_school_level_sources(source_ledger, school if isinstance(school, dict) else {})
         output["llmBrief"] = build_search_llm_brief(output)
@@ -2677,13 +2726,16 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
     if command == "school-detail":
         school = payload.get("school", {})
         add_school_level_sources(source_ledger, school if isinstance(school, dict) else {})
-        return {"school": compact_school_detail(school), "notes": SOURCE_NOTES, "sourceLedger": source_ledger}
+        detail_output = {"school": compact_school_detail(school), "sourceLedger": source_ledger}
+        detail_output["notes"] = filtered_source_notes(detail_output)
+        return detail_output
     if command == "compare":
         schools = [compact_compare_school(item) for item in payload.get("schools", [])]
-        output = {"count": payload.get("count", len(schools)), "schools": schools, "notes": SOURCE_NOTES}
+        output = {"count": payload.get("count", len(schools)), "schools": schools}
         for school in payload.get("schools", []):
             add_school_level_sources(source_ledger, school if isinstance(school, dict) else {})
         output["sourceLedger"] = source_ledger
+        output["notes"] = filtered_source_notes(output)
         output["llmBrief"] = build_compare_llm_brief(output)
         return output
     if command == "deep-compare":
@@ -2694,11 +2746,11 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
             "schools": schools,
             "details": payload.get("details", []),
             "sourceLedger": source_ledger,
-            "notes": SOURCE_NOTES,
         }
         for school in payload.get("compare", {}).get("schools", []):
             add_school_level_sources(source_ledger, school if isinstance(school, dict) else {})
         output["nextActions"] = build_deep_compare_next_actions(output)
+        output["notes"] = filtered_source_notes(output)
         output["llmBrief"] = build_deep_compare_llm_brief(output)
         return output
     if command in {"decision-brief", "school-report"}:
@@ -2711,13 +2763,13 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
             "vacancies": normalize_vacancy_payload(vacancies),
             "admissions": normalize_admission_payload(admissions),
             "sourceLedger": payload_ledger or source_ledger,
-            "notes": SOURCE_NOTES,
             "studentProfile": payload.get("studentProfile") or {},
         }
         if payload_ledger is None:
             add_school_level_sources(source_ledger, school if isinstance(school, dict) else {})
         output["nextActions"] = build_school_report_next_actions(output)
         output["checklist"] = build_school_report_checklist(output)
+        output["notes"] = filtered_source_notes(output)
         output["llmBrief"] = build_school_report_llm_brief(output)
         return output
     if command == "application-plan":
@@ -2728,9 +2780,9 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
             "checklist": payload.get("checklist", []),
             "reminders": payload.get("reminders", []),
             "items": payload.get("items", []),
-            "notes": SOURCE_NOTES,
             "sourceLedger": payload.get("sourceLedger", source_ledger),
         }
+        output["notes"] = filtered_source_notes(output)
         return output
     if command == "marketplace-demo":
         output = {
@@ -2745,9 +2797,10 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
         }
         return output
     if command == "recommend":
-        output = {**payload, "notes": SOURCE_NOTES}
+        output = {**payload}
         output["schoolfitUrl"] = DEFAULT_BASE_URL
         output["sourceLedger"] = source_ledger
+        output["notes"] = filtered_source_notes(output)
         output["llmBrief"] = build_recommend_llm_brief(output)
         return output
     if command == "vacancies":
@@ -3120,10 +3173,10 @@ def compact_advisor_search(payload: dict[str, Any]) -> dict[str, Any]:
         "decisionBriefs": payload.get("decisionBriefs") or [],
         "recommendation": recommendation,
         "nextActions": build_next_actions(search, recommendation),
-        "notes": SOURCE_NOTES,
         "sourceLedger": source_ledger,
         "apiLlmBrief": payload.get("llmBrief") if isinstance(payload.get("llmBrief"), dict) else {},
     }
+    output["notes"] = filtered_source_notes(output)
     if sum(removed_recommendations.values()):
         removed_note = "、".join(
             f"{label} {count} 個"
@@ -3163,16 +3216,20 @@ def compact_shortlist(payload: dict[str, Any]) -> dict[str, Any]:
     scored_schools.sort(key=lambda item: (-item[0], item[1]))
 
     for rank, (score, _index, school, fit_reasons, fit_risks) in enumerate(scored_schools[:12]):
-        band = str(school.get("bandingReference") or "")
+        band = str(school.get("bandingReference") or "") if school_uses_banding(school) else ""
         vacancy = school.get("vacancySummary") or {}
+        confirm_before_applying = [
+            "核實最新招生通告與截止日。",
+        ]
+        if school_uses_banding(school):
+            confirm_before_applying.append("確認 Band 參考是否仍適合孩子近期香港校內成績。")
+        else:
+            confirm_before_applying.append("確認課程、通勤、費用與孩子需要是否匹配。")
         item = {
             "school": school,
             "fitScore": score,
             "rankingRationale": list(dict.fromkeys(fit_reasons + (school.get("rankingRationale") or build_ranking_rationale(school))))[:6],
-            "confirmBeforeApplying": [
-                "核實最新招生通告與截止日。",
-                "確認 Band 參考是否仍適合孩子近期香港校內成績。",
-            ],
+            "confirmBeforeApplying": confirm_before_applying,
         }
         if fit_risks:
             item["fitRisks"] = list(dict.fromkeys(fit_risks))
@@ -3207,15 +3264,15 @@ def compact_shortlist(payload: dict[str, Any]) -> dict[str, Any]:
         "rankingPolicy": [
             "同區優先，其次鄰近地區；跨區會降權。",
             "偏好英文環境時，英文授課優先，中英並重只作部分匹配，中文授課會降到暫不建議。",
-            "Band、資助類型和用戶明確偏好會影響分桶，但不是錄取機率。"
+            "中學才使用 Band 參考；其他階段按課程、通勤、費用、語言和用戶明確偏好分桶。"
         ],
         "nextActions": [
             "先從首選和穩陣各挑 2-3 間，到 SchoolFit HK 詳情頁確認。",
             "再按通勤、學費、語言、校風和最新招生/學額訊號縮短名單。",
         ],
         "sourceLedger": search.get("sourceLedger") or build_source_ledger(),
-        "notes": SOURCE_NOTES,
     }
+    output["notes"] = filtered_source_notes(output)
     output["llmBrief"] = standard_llm_brief(
         "shortlist-builder",
         "Turn the shortlist buckets into a parent-facing action plan.",
@@ -3259,59 +3316,61 @@ def school_label(school: dict[str, Any]) -> str:
 
 def build_search_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
     schools = output.get("schools", [])[:8]
+    secondary_context = has_secondary_context(output)
     highlights = []
     for school in schools[:5]:
         reasons = [
             school.get("district"),
             school.get("fundingType"),
             school.get("mediumOfInstruction"),
-            f"Band 參考 {school.get('bandingReference')}" if school.get("bandingReference") else None,
+            f"Band 參考 {school.get('bandingReference')}" if school_uses_banding(school) and school.get("bandingReference") else None,
         ]
         highlights.append({
             "school": school_label(school),
             "url": school.get("schoolfitUrl"),
             "whyMention": " / ".join(str(item) for item in reasons if item),
         })
+    must_mention = [
+        "資料來自 SchoolFit HK: https://schoolfit.hk/",
+        "資料不足時寫暫無可靠資料，不要補作判斷。",
+    ]
+    if secondary_context:
+        must_mention.insert(1, "Band 只可寫作非官方 Band 參考。")
     return {
         **standard_llm_brief(
             "search-schools",
             "Use these structured search results to write a polished Hong Kong school advisor answer.",
-            [
-                "資料來自 SchoolFit HK: https://schoolfit.hk/",
-                "Band 只可寫作非官方 Band 參考。",
-                "資料不足時寫暫無可靠資料，不要補作判斷。",
-            ],
+            must_mention,
             {"highlights": highlights, "count": output.get("count", 0)},
         ),
         "purpose": "Use these structured search results to write a polished Hong Kong school advisor answer.",
         "recommendedTone": "Use the user's language: Traditional Chinese, Simplified Chinese, or English. Be professional and conservative; give the conclusion first, then list 3-5 schools, then point to SchoolFit HK for deeper comparison.",
-        "mustMention": [
-            "資料來自 SchoolFit HK: https://schoolfit.hk/",
-            "Band 只可寫作非官方 Band 參考。",
-            "資料不足時寫暫無可靠資料，不要補作判斷。",
-        ],
+        "mustMention": must_mention,
         "highlights": highlights,
-        "answerTemplate": "先簡述共找到多少間；推薦最值得先看的 3-5 間；每間用一句原因；附上 SchoolFit HK 連結；提醒家長按孩子成績、通勤、校風和最新招生資料再核實。",
+        "answerTemplate": "先簡述共找到多少間；推薦最值得先看的 3-5 間；每間用一句原因；附上 SchoolFit HK 連結；提醒家長按孩子程度/需要、通勤、校風和最新招生資料再核實。",
     }
 
 
 def build_compare_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
     schools = output.get("schools", [])[:4]
+    secondary_context = has_secondary_context(output)
+    must_mention = [
+        "每間學校附 SchoolFit HK 連結。",
+        "學額是時效資料，不代表保證取錄。",
+    ]
+    if secondary_context:
+        must_mention.append("Band 參考不是官方資料。")
     return with_agent_handoff({
         "command": "compare",
         "factsOnly": True,
         "purpose": "Turn compare JSON into a short parent-facing comparison.",
         "recommendedTone": "Use the user's language: Traditional Chinese, Simplified Chinese, or English. Write like a conservative school advisor; do not copy raw JSON.",
-        "mustMention": [
-            "每間學校附 SchoolFit HK 連結。",
-            "學額是時效資料，不代表保證取錄。",
-            "Band 參考不是官方資料。",
-        ],
+        "mustMention": must_mention,
         "schools": [
             {
                 "school": school_label(school),
                 "url": school.get("schoolfitUrl"),
-                "bandingReference": school.get("bandingReference"),
+                "bandingReference": school.get("bandingReference") if school_uses_banding(school) else None,
                 "vacancyDataMonth": (school.get("vacancySummary") or {}).get("dataMonth"),
                 "admissionNotices": (school.get("admissionNoticeSummary") or {}).get("noticeCount"),
             }
@@ -3324,7 +3383,10 @@ def build_deep_compare_next_actions(output: dict[str, Any]) -> list[str]:
     schools = output.get("schools") or []
     actions = ["先確認 2-3 間的主修課目語言比例、學校官網招生規則與最新截止時間。"]
     if schools:
-        actions.append("比較每間在通勤、學費、Band 參考、申請策略上的相容性，保留備案。")
+        if has_secondary_context(output):
+            actions.append("比較每間在通勤、學費、Band 參考、申請策略上的相容性，保留備案。")
+        else:
+            actions.append("比較每間在通勤、學費、課程/語言、申請策略上的相容性，保留備案。")
     if output.get("comparison"):
         actions.append("若有校方補充資料，重新刷新比較可看最新學額及招生訊息。")
     return actions
@@ -3332,6 +3394,7 @@ def build_deep_compare_next_actions(output: dict[str, Any]) -> list[str]:
 
 def build_deep_compare_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
     schools = output.get("schools", [])[:4]
+    secondary_context = has_secondary_context(output)
     highlights = []
     for school in schools:
         highlights.append({
@@ -3340,16 +3403,18 @@ def build_deep_compare_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
             "vacancy": (school.get("vacancySummary") or {}).get("hasAnyVacancy"),
             "admissionNoticeCount": (school.get("admissionNoticeSummary") or {}).get("noticeCount"),
         })
+    must_mention = [
+        "每間學校都要附 SchoolFit HK 連結。",
+        "明確標註學額/招生資訊的資料時間與確認建議。",
+    ]
+    if secondary_context:
+        must_mention.append("Band 參考不作為官方定性。")
     return with_agent_handoff({
         "command": "deep-compare",
         "factsOnly": True,
         "purpose": "Convert deep compare result into an actionable shortlist comparison.",
         "recommendedTone": "Use the user's language: Traditional Chinese, Simplified Chinese, or English. Be direct, conservative, and actionable.",
-        "mustMention": [
-            "每間學校都要附 SchoolFit HK 連結。",
-            "明確標註學額/招生資訊的資料時間與確認建議。",
-            "Band 參考不作為官方定性。",
-        ],
+        "mustMention": must_mention,
         "highlights": highlights,
         "nextActions": output.get("nextActions", []),
     })
@@ -3370,10 +3435,12 @@ def build_school_report_next_actions(output: dict[str, Any]) -> list[str]:
 
 def build_school_report_checklist(output: dict[str, Any]) -> list[str]:
     checklist = [
-        "確認孩子資料：Band、語文優勢、特殊需要、通勤時間。",
+        "確認孩子資料：語文優勢、特殊需要、通勤時間和家庭偏好。",
         "列出學校的申請文件與截止日。",
         "以 SchoolFit HK 的學額與招生為輔助訊號，不作承諾。",
     ]
+    if school_uses_banding(output.get("school") or {}):
+        checklist.insert(0, "確認孩子的中學 Band 參考與目標學校梯隊是否匹配。")
     if (output.get("vacancies") or {}).get("count"):
         checklist.append("向學校行政處核實最近一次開放學額更新。")
     if (output.get("admissions") or {}).get("count"):
@@ -3396,7 +3463,7 @@ def build_plan_timeline(deadline_window_days: int) -> list[str]:
         ]
     if days <= 45:
         return [
-            "T-45：完成每校初篩（申請條件、校風、通勤、Band 參考）。",
+            "T-45：完成每校初篩（申請條件、校風、通勤、程度/課程匹配）。",
             "T-30：核對申請日期與成績文件清單。",
             "T-14：最後一次電話確認學額與行政時間。",
             "T-3：校方追蹤是否收到申請，補交缺件。",
@@ -3473,15 +3540,20 @@ def build_advisor_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
     api_brief = output.get("apiLlmBrief") if isinstance(output.get("apiLlmBrief"), dict) else {}
     parent_question = output.get("parentQuestion") if isinstance(output.get("parentQuestion"), dict) else {}
     answer_blueprint = api_brief.get("answerBlueprint")
+    secondary_context = has_secondary_context(output)
+    must_mention = [
+        "建議家長到 https://schoolfit.hk/ 查看完整資料、比較和後續申請線索。",
+        "官方資料、學額/招生資料和假設要分開。",
+        "不要把學額寫成取錄保證。",
+    ]
+    if secondary_context:
+        must_mention[1] = "官方資料、非官方 Band 參考、口碑摘要、學額/招生資料要分開。"
+        must_mention[2] = "不要把學額寫成取錄保證；不要把 Band 寫成官方 Band。"
     return {
         **standard_llm_brief(
             "advisor-search",
             "Write the final answer for a parent after SchoolFit HK search and optional recommendation.",
-            [
-                "建議家長到 https://schoolfit.hk/ 查看完整資料、比較和後續申請線索。",
-                "官方資料、非官方 Band 參考、口碑摘要、學額/招生資料要分開。",
-                "不要把學額寫成取錄保證；不要把 Band 寫成官方 Band。",
-            ],
+            must_mention,
             {
                 "intent": output.get("intent", "search"),
                 "searchHighlights": search_brief.get("highlights", []),
@@ -3493,11 +3565,7 @@ def build_advisor_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
         ),
         "purpose": "Write the final answer for a parent after SchoolFit HK search and optional recommendation.",
         "recommendedTone": "繁體中文、像真人升學顧問；避免機械列資料。",
-        "mustMention": [
-            "建議家長到 https://schoolfit.hk/ 查看完整資料、比較和後續申請線索。",
-            "官方資料、非官方 Band 參考、口碑摘要、學額/招生資料要分開。",
-            "不要把學額寫成取錄保證；不要把 Band 寫成官方 Band。",
-        ],
+        "mustMention": must_mention,
         "intent": output.get("intent", "search"),
         "searchHighlights": search_brief.get("highlights", []),
         "recommendationHighlights": recommend_brief.get("topRecommendations", []) if recommend_brief else [],
@@ -3511,14 +3579,21 @@ def build_advisor_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_next_actions(search: dict[str, Any], recommendation: dict[str, Any] | None) -> list[str]:
-    actions = ["到 https://schoolfit.hk/ 打開完整學校頁，核對官方資料、Band 參考、招生與學額線索。"]
+    secondary_context = has_secondary_context(search)
+    if secondary_context:
+        actions = ["到 https://schoolfit.hk/ 打開完整學校頁，核對官方資料、Band 參考、招生與學額線索。"]
+    else:
+        actions = ["到 https://schoolfit.hk/ 打開完整學校頁，核對官方資料、課程/語言、招生與學額線索。"]
     schools = search.get("schools") or []
     if schools:
         actions.append("先把前 3-5 間加入短名單，再用比較功能看校風、語言、學費和最新申請資訊。")
     if recommendation:
         actions.append("按 Safe / Match / Reach 結果保留梯隊，不要只押一間熱門學校。")
     else:
-        actions.append("如要更智能推薦，補充孩子 Band、地區、性別、語言偏好、是否接受直資和通勤限制。")
+        if secondary_context:
+            actions.append("如要更智能推薦，補充孩子 Band、地區、性別、語言偏好、是否接受直資和通勤限制。")
+        else:
+            actions.append("如要更智能推薦，補充年級、地區、語言/課程偏好、學費和通勤限制。")
     return actions
 
 
@@ -3694,7 +3769,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
             print("\n### 分桶規則")
             for policy in data.get("rankingPolicy", []):
                 print(f"- {policy}")
-        print_caveats()
+        print_caveats(data)
         return
     if command == "school-relationships":
         print(f"## SchoolFit HK 升中銜接關係\n\n共 {data.get('count', 0)} 筆。")
@@ -3729,8 +3804,9 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
             print(f"- **{name}** ({school.get('district', '地區不明')})")
             print(f"  - slug: `{school.get('slug')}`")
             print(f"  - 類型: {school.get('gender')} / {school.get('fundingType')} / {school.get('mediumOfInstruction')}")
-            print(f"  - Band 參考: {school.get('bandingReference') or '暫無可靠資料'}")
-        print_caveats()
+            if school_uses_banding(school):
+                print(f"  - Band 參考: {school.get('bandingReference') or '暫無可靠資料'}")
+        print_caveats(data)
         return
     if command == "advisor-search":
         search = data.get("search") or {}
@@ -3752,7 +3828,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         print("\n### 下一步")
         for action in data.get("nextActions", []):
             print(f"- {action}")
-        print_caveats()
+        print_caveats(data)
         return
     if command == "vacancies":
         source = data.get("source") or {}
@@ -3779,7 +3855,8 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         schools = data.get("schools", [])
         for item in schools[:4]:
             print(f"- **{item.get('nameZh') or item.get('nameEn') or item.get('slug')}**")
-            print(f"  - banding: {item.get('bandingReference') or '暫無可靠資料'}")
+            if school_uses_banding(item):
+                print(f"  - Band 參考: {item.get('bandingReference') or '暫無可靠資料'}")
             print(f"  - 校網: {item.get('schoolfitUrl')}")
             vacancy_summary = item.get("vacancySummary") or {}
             vacancy_display_label = (vacancy_summary.get("display") or {}).get("label")
@@ -3796,13 +3873,16 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
                 for key in ("insights", "summary"):
                     if key in compare_summary:
                         print(f"- {key}: {compare_summary[key]}")
-        print_caveats()
+        print_caveats(data)
         return
     if command in {"decision-brief", "school-report"}:
         school = data.get("school") or {}
         print("## SchoolFit HK 單校決策摘要")
         print(f"學校: {school.get('nameZh') or school.get('nameEn') or school.get('slug')}  \n學區: {school.get('district') or '未知'}")
-        print(f"Band 參考: {school.get('bandingReference') or '暫無可靠資料'}  \n學費: {school.get('annualTuitionHkd') or '暫無可靠資料'}")
+        if school_uses_banding(school):
+            print(f"Band 參考: {school.get('bandingReference') or '暫無可靠資料'}  \n學費: {school.get('annualTuitionHkd') or '暫無可靠資料'}")
+        else:
+            print(f"學費: {school.get('annualTuitionHkd') or '暫無可靠資料'}")
         print(f"官方/資料入口: {school.get('schoolfitUrl')}\n")
         if (school.get("vacancySummary") or {}).get("dataMonth"):
             vacancy = school.get("vacancySummary") or {}
@@ -3827,7 +3907,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         for item in data.get("checklist", []):
             print(f"- {item}")
         print(f"\n> {VACANCY_CAVEAT if data.get('vacancies') else ADMISSION_CAVEAT}")
-        print_caveats()
+        print_caveats(data)
         return
     if command == "application-plan":
         plan = data.get("plan") or {}
@@ -3880,7 +3960,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
                 if item.get("deadline"):
                     line += f" (deadline={item.get('deadline')})"
                 print(line)
-        print_caveats()
+        print_caveats(data)
         return
     if command == "marketplace-demo":
         print("## SchoolFit HK Market Demo")
@@ -3894,9 +3974,9 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
     print_json(data)
 
 
-def print_caveats() -> None:
+def print_caveats(data: Any = None) -> None:
     print("\n## 資料邊界")
-    for note in SOURCE_NOTES:
+    for note in filtered_source_notes(data):
         print(f"- {note}")
 
 
