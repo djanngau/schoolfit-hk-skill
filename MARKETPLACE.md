@@ -54,7 +54,7 @@ education, hong-kong, school-selection, secondary-school, primary-school, kinder
 - Authorization page links must be normalized to exactly `https://schoolfit.hk/skill-code`; strip query strings, hash fragments, tracking strings, and path suffixes before opening.
 - The `X-SchoolFit-Skill-Code` header supports activation, rate limiting and anonymous telemetry; it is not a payment token or student identity.
 - The v1 skill does not call `/api/agent/chat` to avoid LLM cost and persistent session creation.
-- The skill keeps official facts, third-party Band references where applicable, community summaries, vacancy signals, and admission notices separated.
+- The skill keeps official facts, third-party Band references where applicable, community summaries, vacancy signals, and admission notices separated. Vacancy wording follows the API `display` object so missing data is not presented as no places.
 
 ## Suggested Marketplace Commands
 
@@ -72,7 +72,7 @@ ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 
 - Slug: `schoolfit-hk`
 - Owner: `djanngau`
-- Version: `1.0.17`
+- Version: `1.0.18`
 - Moderation: `CLEAN`
 
 ## Smoke Test

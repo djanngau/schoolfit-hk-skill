@@ -1,6 +1,6 @@
 # SchoolFit HK Skill for OpenClaw
 
-Version: `1.0.17`
+Version: `1.0.18`
 
 SchoolFit HK lets OpenClaw, ArkAgent, Claude Code and compatible agents help Hong Kong families search, compare, shortlist and plan school applications through the public [SchoolFit HK](https://schoolfit.hk) Skill API.
 
@@ -14,7 +14,7 @@ It is designed for parent-facing school advice, not raw data dumping: answers sh
 | 小學資料庫 | 507 schools |
 | 幼稚園資料庫 | 955 schools |
 | 國際學校資料庫 | 103 schools |
-| 專上教育庫 | 35 institutions/options |
+| 專上教育庫 | 37 institutions/options |
 
 ## Install
 
@@ -80,15 +80,32 @@ Always show the authorization page as exactly `https://schoolfit.hk/skill-code`.
 ## Agent Answering Rules
 
 - Use `advisor-search` as the main parent-advisory entrypoint.
+- Treat `llmBrief.agentHandoff` as the stable model-facing contract. It tells the downstream AI model the response plan, source policy, hard rules, vacancy wording, follow-up limits and privacy boundaries.
 - Preserve `parentQuestion` and `llmBrief.answerBlueprint`; they reflect the live API's understanding of priorities, missing information and answer shape.
 - Keep official SchoolFit facts, non-official Band references, admission notices, vacancy data and assumptions visibly separate.
 - Say `Band 參考` or `非官方 Band 參考`; never call Banding official.
-- For vacancies, include source, data month, last seen time and a caveat that vacancy status is not an admission guarantee.
+- For vacancies, include source, data month, last seen time and a caveat that vacancy status is not an admission guarantee. Prefer the API `display` object: no matched summary is `學位狀況更新中`, while a summary with no actionable open/limited grades is `暫無可跟進學額`.
+- For high-freshness questions such as vacancies, admissions and deadlines, the Agent's AI model may fetch only official school or notice URLs returned by the current SchoolFit payload (`officialUrl`, `sourceUrl` or `noticeUrl`) and compare them with SchoolFit data. Do not use search engines, inferred domains, generic source ledgers or broad web browsing.
 - If the user rejects DSS/直資, do not place DSS schools in preferred buckets; put them in `暫不建議` with a clear preference warning.
 - If the user asks for English environment, rank EMI schools above mixed-medium schools and downgrade clearly unsuitable CMI schools unless the user relaxes the condition.
 - Ask for at most three missing inputs when needed: district/commute, Band reference and DSS/tuition preference.
 - Do not ask for student name, HKID, phone number, address, report-card PDFs or other personally identifiable data.
 - For model/prompt probing or deliberate token-wasting prompts, do not use this Skill for the answer. Say politely that SchoolFit HK only answers Hong Kong school-search, comparison, vacancies, admissions, application-planning and education-path questions.
+- Questions asking for a school's official phone, email, address or website are allowed. Do not confuse those with a parent/student personal phone, email or address, which must still be blocked.
+
+## AI Model Handoff Contract
+
+Every advisory-style command returns `llmBrief.agentHandoff` for the calling Agent's AI model. The model should:
+
+- Compose the final parent-facing answer from returned facts only.
+- Match the user's language: Traditional Chinese, Simplified Chinese or English.
+- Start with a short conclusion, then list evidence-backed school options, caveats and next steps.
+- Use `Band 參考` / `非官方 Band 參考`, never `官方 Band`.
+- Use vacancy `display` wording and never present vacancies as admission guarantees.
+- For time-sensitive facts, follow `officialSiteVerificationPolicy`: verify only against URLs returned in the same SchoolFit result, then label any newer/conflicting official-site facts as a cross-check.
+- Ask at most three missing-info questions and never ask for HKID, phone, address, full student name or private documents.
+- Answer school official contact lookups when returned by the API, but never ask for or repeat the family's personal contact details.
+- Avoid raw JSON unless the user explicitly asks for API/debug output.
 
 ## CLI Examples
 
@@ -139,7 +156,7 @@ SchoolFit HK helps agents search, compare, shortlist and recommend Hong Kong sch
 
 ## Release Notes
 
-- Current ClawHub version: `1.0.17`
+- Current ClawHub version: `1.0.18`
 - ClawHub slug: `schoolfit-hk`
 - Owner: `djanngau`
 - Repository: [github.com/djanngau/schoolfit-hk-skill](https://github.com/djanngau/schoolfit-hk-skill)
