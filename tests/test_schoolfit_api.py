@@ -2140,6 +2140,82 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertEqual(output["candidates"][0]["slug"], "st-pauls-co-educational-college")
         self.assertIn("decision-brief", output["nextActions"][0])
 
+    def test_school_name_lookup_cleans_search_prefix_without_generic_misfire(self):
+        self.assertEqual(schoolfit_api.resolve_school_query("搜基道中学"), "基道中學")
+        self.assertEqual(schoolfit_api.schoolfit_query_for_api("搜基道中学"), "基道中學")
+        self.assertEqual(schoolfit_api.resolve_school_query("迦密聖道中學"), "迦密聖道中學")
+
+        parsed = schoolfit_api.parse_parent_request_text("搜基道中学")
+        self.assertEqual(parsed["suggestedCommandParams"]["advisor-search"]["q"], "基道中學")
+
+    def test_resolve_school_keeps_short_cjk_school_names_precise(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "resolve-school",
+            "--name",
+            "搜基道中学",
+        ])
+        payload = {
+            "count": 2,
+            "schools": [
+                {"slug": "carmel-holy-word-secondary-school", "nameZh": "迦密聖道中學", "nameEn": "Carmel Holy Word Secondary School"},
+                {"slug": "ccckeito-secondary-school", "nameZh": "中華基督教會基道中學", "nameEn": "CCC Kei To Secondary School"},
+            ],
+        }
+        with mock.patch.object(schoolfit_api, "request_json", return_value=payload) as request:
+            output = schoolfit_api.run(args)
+
+        self.assertEqual(request.call_args.kwargs["params"]["q"], "基道中學")
+        self.assertEqual(output["resolvedQuery"], "基道中學")
+        self.assertTrue(output["schoolNamePrecision"]["clearMatch"])
+        self.assertEqual(output["count"], 1)
+        self.assertEqual(output["candidates"][0]["nameZh"], "中華基督教會基道中學")
+        self.assertFalse(any(item["nameZh"] == "迦密聖道中學" for item in output["candidates"]))
+
+    def test_resolve_school_does_not_treat_generic_school_terms_as_clear(self):
+        output = schoolfit_api.compact_output("resolve-school", {
+            "query": "基督教中学",
+            "resolvedQuery": "基督教中學",
+            "count": 2,
+            "schools": [
+                {"slug": "ccckeito-secondary-school", "nameZh": "中華基督教會基道中學", "nameEn": "CCC Kei To Secondary School"},
+                {"slug": "cccmingkei-college", "nameZh": "中華基督教會銘基書院", "nameEn": "CCC Ming Kei College"},
+            ],
+        })
+
+        self.assertFalse(output["schoolNamePrecision"]["clearMatch"])
+        self.assertEqual(output["count"], 2)
+        self.assertTrue(all(item["matchHint"] == "需用戶確認" for item in output["candidates"]))
+
+    def test_advisor_search_applies_school_name_precision_to_nested_search_results(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "--skill-code",
+            "schoolfit-openclaw-v1-reserved",
+            "advisor-search",
+            "--q",
+            "搜基道中学",
+            "--no-recommend",
+        ])
+        payload = {
+            "query": "搜基道中学",
+            "search": {
+                "count": 2,
+                "schools": [
+                    {"slug": "carmel-holy-word-secondary-school", "nameZh": "迦密聖道中學", "nameEn": "Carmel Holy Word Secondary School"},
+                    {"slug": "ccckeito-secondary-school", "nameZh": "中華基督教會基道中學", "nameEn": "CCC Kei To Secondary School"},
+                ],
+            },
+        }
+        with mock.patch.object(schoolfit_api, "request_json", return_value=payload) as request:
+            output = schoolfit_api.run(args)
+
+        self.assertEqual(request.call_args.kwargs["params"]["q"], "基道中學")
+        self.assertTrue(output["search"]["schoolNamePrecision"]["clearMatch"])
+        self.assertEqual(output["search"]["count"], 1)
+        self.assertEqual(output["search"]["schools"][0]["nameZh"], "中華基督教會基道中學")
+        self.assertFalse(any(item["nameZh"] == "迦密聖道中學" for item in output["search"]["schools"]))
+
     def test_vacancies_accepts_flag_style_has_vacancy(self):
         args = schoolfit_api.build_parser().parse_args([
             "--skill-code",

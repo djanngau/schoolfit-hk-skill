@@ -23,8 +23,8 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.0.19"
-SKILL_VERSION_HEADER_VERSION = "1.0.19"
+SKILL_VERSION = "1.0.20"
+SKILL_VERSION_HEADER_VERSION = "1.0.20"
 MAX_COMPARE_IDS = 4
 ROBUST_SEARCH_PAGE_SIZE = 1000
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
@@ -51,6 +51,49 @@ HKID_RE = re.compile(r"\b[A-Z]{1,2}\d{6}\(?[0-9A]\)?\b", re.IGNORECASE)
 HK_PHONE_RE = re.compile(r"(?<!\d)(?:\+?852[-\s]?)?[456789]\d{3}[-\s]?\d{4}(?!\d)")
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 CONTACT_PHONE_FRAGMENT_RE = re.compile(r"(?<!\d)(?:\+?852[-\s]?)?[23456789]\d{3}[-\s]?\d{4}(?!\d)")
+CJK_RE = re.compile(r"[\u3400-\u9fff]")
+CJK_ONLY_RE = re.compile(r"^[\u3400-\u9fff]+$")
+SCHOOL_LOOKUP_PREFIX_RE = re.compile(
+    r"^(?:(?:請問|请问|請|请|麻煩|麻烦|幫我|帮我|幫忙|帮忙|我想|想|要|可否|可以|能否|"
+    r"搜索|搜尋|搜|查詢|查询|查|找|搵|睇睇|看看|問下|问下|問|问|search)\s*)+",
+    re.IGNORECASE,
+)
+SCHOOL_LOOKUP_SUFFIX_RE = re.compile(
+    r"(?:資料|资料|詳情|详情|介紹|介绍|簡介|简介|背景|唔該|谢谢|謝謝|一下|下)+$",
+    re.IGNORECASE,
+)
+SCHOOL_LOOKUP_EDGE_PUNCT_RE = re.compile(r"^[\s:：,，。?？!！]+|[\s:：,，。?？!！]+$")
+SCHOOL_NAME_GENERIC_RE = re.compile(
+    r"中學暨小學|中学暨小学|中小學|中小学|國際學校|国际学校|幼稚園|幼稚园|幼兒園|幼儿园|"
+    r"中學|中学|小學|小学|書院|书院|學校|学校|college|secondaryschool|primaryschool|"
+    r"kindergarten|school",
+    re.IGNORECASE,
+)
+SCHOOL_LOOKUP_TRANSLATION = str.maketrans({
+    "学": "學",
+    "国": "國",
+    "际": "際",
+    "书": "書",
+    "园": "園",
+    "儿": "兒",
+    "圣": "聖",
+    "华": "華",
+    "会": "會",
+    "礼": "禮",
+    "爱": "愛",
+    "实": "實",
+    "验": "驗",
+    "东": "東",
+    "龙": "龍",
+    "区": "區",
+    "资": "資",
+})
+SCHOOL_LOOKUP_BROAD_TERMS = (
+    "band", "英文", "中文", "男女", "女校", "男校", "學費", "学费", "預算", "预算",
+    "推薦", "推荐", "建議", "建议", "比較", "比较", "對比", "对比", "vs", "適合", "适合",
+    "哪些", "哪間", "邊間", "幾間", "几间", "所有", "全部", "有咩", "有什麼", "有什么",
+    "不要", "唔要", "不考慮", "不考虑", "通勤", "車程", "车程", "分鐘", "分钟",
+)
 PII_WARNING_MESSAGE = (
     "為保護學生私隱，請不要在 Skill 請求中提供學生全名、HKID、電話、住址、成績表 PDF 或其他可識別個人資料。"
 )
@@ -1378,6 +1421,225 @@ def normalized_ascii_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.lower())
 
 
+def strip_school_lookup_request_words(text: str | None) -> str | None:
+    if not isinstance(text, str):
+        return text
+    cleaned = text.strip()
+    if not cleaned:
+        return cleaned
+
+    previous = None
+    while previous != cleaned:
+        previous = cleaned
+        cleaned = SCHOOL_LOOKUP_PREFIX_RE.sub("", cleaned).strip()
+        cleaned = SCHOOL_LOOKUP_EDGE_PUNCT_RE.sub("", cleaned).strip()
+
+    previous = None
+    while previous != cleaned:
+        previous = cleaned
+        cleaned = SCHOOL_LOOKUP_SUFFIX_RE.sub("", cleaned).strip()
+        cleaned = SCHOOL_LOOKUP_EDGE_PUNCT_RE.sub("", cleaned).strip()
+
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def clean_school_lookup_query(text: str | None) -> str | None:
+    if not isinstance(text, str):
+        return text
+    cleaned = strip_school_lookup_request_words(text)
+    if not cleaned:
+        return text.strip()
+    return cleaned.translate(SCHOOL_LOOKUP_TRANSLATION)
+
+
+def normalize_school_name_lookup_text(value: str | None) -> str:
+    cleaned = clean_school_lookup_query(value)
+    if not isinstance(cleaned, str):
+        return ""
+    normalized = (
+        cleaned.lower()
+        .replace("&", "and")
+        .replace("衞", "衛")
+        .translate(SCHOOL_LOOKUP_TRANSLATION)
+    )
+    return re.sub(r"[\s()（）．·・,，.'’`\\-]+", "", normalized)
+
+
+def school_name_core(value: str | None) -> str:
+    normalized = normalize_school_name_lookup_text(value)
+    return re.sub(r"[^a-z0-9\u3400-\u9fff]+", "", SCHOOL_NAME_GENERIC_RE.sub("", normalized))
+
+
+def is_usable_school_name_query(normalized_query: str) -> bool:
+    if not normalized_query:
+        return False
+    if normalized_query.isdigit():
+        return len(normalized_query) >= 3
+    if re.fullmatch(r"[a-z0-9]+", normalized_query):
+        return len(normalized_query) >= 3
+    if not CJK_RE.search(normalized_query):
+        return len(normalized_query) >= 3
+    return len(school_name_core(normalized_query)) >= 2
+
+
+def is_usable_school_name_token(normalized_name: str) -> bool:
+    if not normalized_name:
+        return False
+    if normalized_name.isdigit():
+        return False
+    return len(normalized_name) >= 2
+
+
+def longest_common_cjk_run(a: str, b: str) -> int:
+    longest = 0
+    for start in range(len(a)):
+        if not CJK_RE.match(a[start]):
+            continue
+        for end in range(start + 1, len(a) + 1):
+            chunk = a[start:end]
+            if not CJK_ONLY_RE.fullmatch(chunk):
+                break
+            if len(chunk) > longest and chunk in b:
+                longest = len(chunk)
+    return longest
+
+
+def is_likely_standalone_school_lookup_query(text: str | None) -> bool:
+    if not isinstance(text, str):
+        return False
+    cleaned = clean_school_lookup_query(text) or ""
+    normalized = normalize_school_name_lookup_text(cleaned)
+    if not is_usable_school_name_query(normalized):
+        return False
+    lowered = cleaned.lower()
+    if any(term in cleaned or term in lowered for term in SCHOOL_LOOKUP_BROAD_TERMS):
+        return False
+    if normalized_ascii_text(cleaned) in SCHOOL_NAME_ALIASES:
+        return True
+    if " " in cleaned.strip() and not SCHOOL_NAME_GENERIC_RE.search(cleaned):
+        return False
+    return bool(CJK_RE.search(normalized) and (SCHOOL_NAME_GENERIC_RE.search(cleaned) or len(school_name_core(cleaned)) <= 8))
+
+
+def schoolfit_query_for_api(text: str | None) -> str | None:
+    if not isinstance(text, str):
+        return text
+    raw = text.strip()
+    if not raw:
+        return raw
+    cleaned = clean_school_lookup_query(raw)
+    if not cleaned:
+        return raw
+    alias_key = normalized_ascii_text(cleaned)
+    if alias_key in SCHOOL_NAME_ALIASES:
+        return SCHOOL_NAME_ALIASES[alias_key]
+    if cleaned != raw:
+        return cleaned
+    if is_likely_standalone_school_lookup_query(cleaned):
+        return cleaned
+    return raw
+
+
+def school_lookup_names(school: dict[str, Any]) -> list[str]:
+    names: list[str] = []
+    for key in ("nameZh", "nameEn", "name"):
+        value = school.get(key)
+        if isinstance(value, str) and value.strip():
+            names.append(value)
+    aliases = school.get("aliases")
+    if isinstance(aliases, list):
+        names.extend(str(item) for item in aliases if str(item).strip())
+    elif isinstance(aliases, str) and aliases.strip():
+        names.extend(item.strip() for item in aliases.split(",") if item.strip())
+    return names
+
+
+def score_school_name_match(school: dict[str, Any], query: str | None) -> int:
+    normalized_query = normalize_school_name_lookup_text(query)
+    if not is_usable_school_name_query(normalized_query):
+        return 0
+    query_core = school_name_core(normalized_query)
+
+    for name in school_lookup_names(school):
+        normalized_name = normalize_school_name_lookup_text(name)
+        if not is_usable_school_name_token(normalized_name):
+            continue
+        name_core = school_name_core(normalized_name)
+        if normalized_name == normalized_query:
+            return 220
+        if normalized_query and normalized_name and normalized_query in normalized_name:
+            return 185
+        if normalized_name and normalized_query and normalized_name in normalized_query:
+            return 170
+        if len(query_core) >= 2 and query_core in name_core:
+            return 165
+        if len(query_core) >= 3 and longest_common_cjk_run(query_core, name_core) >= 3:
+            return 95
+    return 0
+
+
+def is_clear_school_name_match(best: dict[str, Any], runner_up: dict[str, Any] | None) -> bool:
+    if not runner_up:
+        return True
+    best_score = int(best.get("score") or 0)
+    runner_score = int(runner_up.get("score") or 0)
+    if best_score >= 180:
+        return best_score > runner_score
+    return best_score - runner_score >= 30
+
+
+def apply_school_name_precision(schools: list[Any], query: str | None) -> tuple[list[Any], dict[str, Any] | None]:
+    if not isinstance(query, str) or not schools:
+        return schools, None
+    normalized_query = normalize_school_name_lookup_text(query)
+    if not is_usable_school_name_query(normalized_query):
+        return schools, None
+
+    scored = []
+    for index, school in enumerate(schools):
+        if not isinstance(school, dict):
+            continue
+        score = score_school_name_match(school, query)
+        scored.append({"score": score, "index": index, "school": school})
+    matches = [item for item in scored if item["score"] >= 100]
+    if not matches:
+        return schools, {
+            "normalizedQuery": normalized_query,
+            "queryCore": school_name_core(normalized_query),
+            "clearMatch": False,
+            "reason": "no_candidate_name_match",
+            "originalCount": len(schools),
+            "matchedCount": 0,
+        }
+
+    matches.sort(key=lambda item: (-int(item["score"]), int(item["index"])))
+    best = matches[0]
+    runner_up = matches[1] if len(matches) > 1 else None
+    clear = is_clear_school_name_match(best, runner_up)
+    if not clear:
+        return schools, {
+            "normalizedQuery": normalized_query,
+            "queryCore": school_name_core(normalized_query),
+            "clearMatch": False,
+            "reason": "ambiguous_candidate_name_match",
+            "bestScore": best["score"],
+            "runnerUpScore": runner_up["score"] if runner_up else None,
+            "originalCount": len(schools),
+            "matchedCount": len(matches),
+        }
+
+    return [item["school"] for item in matches], {
+        "normalizedQuery": normalized_query,
+        "queryCore": school_name_core(normalized_query),
+        "clearMatch": True,
+        "reason": "clear_school_name_match",
+        "bestScore": best["score"],
+        "runnerUpScore": runner_up["score"] if runner_up else None,
+        "originalCount": len(schools),
+        "matchedCount": len(matches),
+    }
+
+
 def mentions_known_secondary_school(raw: str, lowered: str) -> bool:
     compact = normalized_ascii_text(raw)
     for alias, school_name in SCHOOL_NAME_ALIASES.items():
@@ -1813,7 +2075,7 @@ def parse_parent_request_text(text: str | None) -> dict[str, Any]:
 
     suggested = {
         "advisor-search": {
-            "q": raw,
+            "q": schoolfit_query_for_api(raw),
             **filters,
             **{key: value for key, value in signals.items() if key in {"levelLabel", "languagePriority", "acceptsDss", "priorities", "supportNeeds", "responseLanguage"}},
         }
@@ -1924,8 +2186,9 @@ def build_ranking_rationale(school: dict[str, Any]) -> list[str]:
 
 
 def resolve_school_query(name: str) -> str:
-    normalized = re.sub(r"[^a-z0-9]", "", name.lower())
-    return SCHOOL_NAME_ALIASES.get(normalized, name)
+    cleaned = clean_school_lookup_query(name) or name
+    normalized = normalized_ascii_text(cleaned)
+    return SCHOOL_NAME_ALIASES.get(normalized, cleaned)
 
 
 def school_identity(school: dict[str, Any]) -> str:
@@ -2677,14 +2940,27 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
     if command == "activate":
         return payload if isinstance(payload, dict) else {}
     if command == "resolve-school":
-        schools = [compact_school(item) for item in payload.get("schools", [])]
+        raw_schools, school_name_precision = apply_school_name_precision(
+            payload.get("schools", []),
+            payload.get("resolvedQuery") or payload.get("query"),
+        )
+        schools = [compact_school(item) for item in raw_schools]
         output = {
             "query": payload.get("query"),
-            "count": payload.get("count", len(schools)),
+            "resolvedQuery": payload.get("resolvedQuery"),
+            "count": len(schools) if school_name_precision and school_name_precision.get("clearMatch") else payload.get("count", len(schools)),
             "candidates": [
                 {
                     **school,
-                    "matchHint": "首選候選" if index == 0 else "可能候選",
+                    "matchHint": (
+                        "明確學校名命中"
+                        if index == 0 and school_name_precision and school_name_precision.get("clearMatch")
+                        else "需用戶確認"
+                        if school_name_precision and not school_name_precision.get("clearMatch")
+                        else "首選候選"
+                        if index == 0
+                        else "可能候選"
+                    ),
                     "useNext": f"school-detail {school.get('slug')}" if school.get("slug") else None,
                 }
                 for index, school in enumerate(schools[:8])
@@ -2695,6 +2971,10 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
             ],
             "sourceLedger": source_ledger,
         }
+        if school_name_precision:
+            output["schoolNamePrecision"] = school_name_precision
+        if school_name_precision and not school_name_precision.get("clearMatch"):
+            output["nextActions"].insert(0, "未能判定唯一明確學校名；不要直接把第一個候選當作答案，先向用戶確認。")
         output["llmBrief"] = standard_llm_brief(
             "resolve-school",
             "Help the Agent pick the most likely SchoolFit slug from fuzzy school names.",
@@ -2702,21 +2982,31 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
                 "不要假定第一個一定正確；候選相近時請用戶確認。",
                 "只使用 candidates 返回的 slug 和名稱。",
             ],
-            {"candidates": output["candidates"][:5]},
+            {"candidates": output["candidates"][:5], "schoolNamePrecision": output.get("schoolNamePrecision")},
         )
         return output
     if command == "shortlist-builder":
         return compact_shortlist(payload)
     if command == "search-schools":
-        schools = [compact_school(item) for item in payload.get("schools", [])]
+        raw_schools, school_name_precision = apply_school_name_precision(
+            payload.get("schools", []),
+            payload.get("resolvedQuery") or payload.get("query"),
+        )
+        schools = [compact_school(item) for item in raw_schools]
         output = {
-            "count": payload.get("count", len(schools)),
+            "query": payload.get("query"),
+            "resolvedQuery": payload.get("resolvedQuery"),
+            "count": len(schools) if school_name_precision and school_name_precision.get("clearMatch") else payload.get("count", len(schools)),
             "schools": schools,
             "pagination": payload.get("pagination"),
             "robustSearch": payload.get("robustSearch"),
             "sourceLedger": source_ledger,
         }
+        if school_name_precision:
+            output["schoolNamePrecision"] = school_name_precision
         output["notes"] = filtered_source_notes(output)
+        if school_name_precision and not school_name_precision.get("clearMatch"):
+            output["notes"].append("學校名查詢未能形成唯一明確命中；Agent 不應把第一項直接當作確定學校。")
         for school in payload.get("schools", []):
             add_school_level_sources(source_ledger, school if isinstance(school, dict) else {})
         output["llmBrief"] = build_search_llm_brief(output)
@@ -3131,7 +3421,14 @@ def recommendation_matches_hard_preferences(recommendation: dict[str, Any], hard
 
 
 def compact_advisor_search(payload: dict[str, Any]) -> dict[str, Any]:
-    search = compact_output("search-schools", payload.get("search", {}))
+    search_payload = payload.get("search", {})
+    if isinstance(search_payload, dict):
+        search_payload = {
+            **search_payload,
+            "query": search_payload.get("query") or payload.get("query") or payload.get("parentQuestion"),
+            "resolvedQuery": search_payload.get("resolvedQuery") or payload.get("resolvedQuery"),
+        }
+    search = compact_output("search-schools", search_payload)
     intent = payload.get("intent", "search")
     source_ledger = payload.get("sourceLedger") if isinstance(payload.get("sourceLedger"), dict) else search.get("sourceLedger") or build_source_ledger()
     recommendation_raw = payload.get("recommendation")
@@ -3199,7 +3496,14 @@ def compact_advisor_search(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def compact_shortlist(payload: dict[str, Any]) -> dict[str, Any]:
-    search = compact_output("search-schools", payload.get("search", {}))
+    search_payload = payload.get("search", {})
+    if isinstance(search_payload, dict):
+        search_payload = {
+            **search_payload,
+            "query": search_payload.get("query") or payload.get("query"),
+            "resolvedQuery": search_payload.get("resolvedQuery") or payload.get("resolvedQuery"),
+        }
+    search = compact_output("search-schools", search_payload)
     schools = search.get("schools", [])
     parsed_signals = payload.get("parsedSignals") or {}
     accepts_dss = parsed_signals.get("acceptsDss")
@@ -4161,7 +4465,7 @@ def add_core_recommendation_filters(parser: argparse.ArgumentParser) -> None:
 
 def school_search_params(args: argparse.Namespace) -> dict[str, Any]:
     return {
-        "q": args.q,
+        "q": schoolfit_query_for_api(args.q),
         "level": getattr(args, "level", None),
         "district": args.district,
         "banding": args.banding,
@@ -4195,6 +4499,7 @@ def advisory_search_params(args: argparse.Namespace) -> dict[str, Any]:
         has_boarding = True
         if isinstance(enriched_q, str) and "boarding" not in enriched_q.lower():
             enriched_q = f"{enriched_q} boarding"
+    enriched_q = schoolfit_query_for_api(enriched_q)
 
     intent = getattr(args, "intent", "auto") or "auto"
     resolved_intent = infer_intent(args) if intent == "auto" else intent
@@ -4444,6 +4749,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     payload: Any
     if command == "search-schools":
         payload = robust_school_search(api, args)
+        if isinstance(payload, dict):
+            payload["query"] = getattr(args, "q", None)
+            payload["resolvedQuery"] = schoolfit_query_for_api(getattr(args, "q", None))
     elif command == "resolve-school":
         resolved_query = resolve_school_query(args.name)
         payload = api("GET", "/api/schools", params={
@@ -4472,6 +4780,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         })
         if isinstance(payload, dict):
             payload["query"] = getattr(args, "q", None)
+            payload["resolvedQuery"] = schoolfit_query_for_api(getattr(args, "q", None))
             payload["missingInfoQuestions"] = parsed.get("missingInfoQuestions", [])
             payload["conversationHints"] = parsed.get("conversationHints", [])
             payload["parsedSignals"] = parsed.get("recommendationSignals", {})
@@ -4484,11 +4793,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 payload["search"] = fallback
                 payload["fallbackUsed"] = "structured_filter_search"
     elif command == "advisor-search":
-        payload = api("GET", "/api/skill/search-advisor", params=build_advisor_search_params(args))
+        params = build_advisor_search_params(args)
+        payload = api("GET", "/api/skill/search-advisor", params=params)
         if isinstance(payload, dict) and args.fallback_empty == "broaden":
             search_payload = payload.get("search") if isinstance(payload.get("search"), dict) else {}
             if int((search_payload or {}).get("count", 0) or 0) == 0:
-                payload = api("GET", "/api/skill/search-advisor", params=build_advisor_search_params(args, routing_mode="broad"))
+                params = build_advisor_search_params(args, routing_mode="broad")
+                payload = api("GET", "/api/skill/search-advisor", params=params)
+        if isinstance(payload, dict):
+            payload["query"] = getattr(args, "q", None)
+            payload["resolvedQuery"] = params.get("q")
         if isinstance(payload, dict):
             search_payload = payload.get("search") if isinstance(payload.get("search"), dict) else {}
             if should_run_robust_district_search(args, search_payload):

@@ -72,7 +72,7 @@ ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 
 - Slug: `schoolfit-hk`
 - Owner: `djanngau`
-- Version: `1.0.19`
+- Version: `1.0.20`
 - Moderation: `CLEAN`
 
 ## Smoke Test
