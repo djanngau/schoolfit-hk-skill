@@ -5,7 +5,7 @@
 - Name: `SchoolFit`
 - Slug: `schoolfit`
 - Owner: `djanngau`
-- Version: `1.1.4`
+- Version: `1.1.5`
 - Repository: [github.com/djanngau/schoolfit-skill](https://github.com/djanngau/schoolfit-skill)
 - ClawHub listing: [clawhub.ai/djanngau/schoolfit](https://clawhub.ai/djanngau/schoolfit)
 - Primary marketplace: ClawHub

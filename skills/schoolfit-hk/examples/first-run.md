@@ -3,7 +3,7 @@
 User:
 
 ```text
-我剛安裝 SchoolFit HK Skill，要怎樣開始？
+我剛安裝 SchoolFit，要怎樣開始？
 ```
 
 Agent:
