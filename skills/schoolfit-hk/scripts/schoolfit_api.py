@@ -19,8 +19,8 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.1.11"
-SKILL_VERSION_HEADER_VERSION = "1.1.11"
+SKILL_VERSION = "1.2.0"
+SKILL_VERSION_HEADER_VERSION = "1.2.0"
 MAX_COMPARE_IDS = 4
 ROBUST_SEARCH_PAGE_SIZE = 1000
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
@@ -39,9 +39,6 @@ AMOUNT_EN_RE = "(?:annual_amount|annual amount|preference|under|below|max|tui" +
 PERSONAL_DATA_FLAG = "containsPossible" + "Sens" + "itive" + "Data"
 SKILL_REQUIRES_CODE_MESSAGE = (
     "請先開啟 https://schoolfit.hk/skill-code 取得 SchoolFit session access code，複製後直接在聊天窗口發給 Agent。"
-)
-SKILL_ACTIVATION_HINT = (
-    "請先到 https://schoolfit.hk/skill-code 取得 SchoolFit session access code，複製後直接在聊天窗口發給 Agent。"
 )
 SKILL_USAGE_EVENT = "command_run"
 SKILL_TELEMETRY_ENDPOINT = "/api/skill/telemetry"
@@ -254,11 +251,13 @@ class SchoolFitError(RuntimeError):
 def validate_base_url(base_url: str) -> str:
     parsed = urllib.parse.urlparse(base_url)
     if parsed.scheme != "https":
-        raise SchoolFitError("Base URL must use https.")
+        raise SchoolFitError("Base URL must use https")
     if parsed.hostname not in ALLOWED_HOSTS:
-        raise SchoolFitError("Refusing to call non-SchoolFit host. Allowed host: schoolfit.hk.")
+        raise SchoolFitError("Refusing non-SchoolFit host")
     if parsed.username or getattr(parsed, "pass" + "word") or parsed.port:
-        raise SchoolFitError("Base URL must not include embedded user-info or custom ports.")
+        raise SchoolFitError("Base URL must not include user-info or ports")
+    if parsed.path not in ("", "/") or parsed.params or parsed.query or parsed.fragment:
+        raise SchoolFitError("Base URL must be https://schoolfit.hk")
     return base_url.rstrip("/")
 
 
@@ -299,6 +298,8 @@ def code_display(code: str | None) -> str:
     if not code:
         return ""
     normalized = code.strip()
+    if normalized.startswith("sfhk_") and len(normalized) <= 8:
+        return "sfhk..."
     if len(normalized) <= 8:
         return normalized
     return f"{normalized[:4]}...{normalized[-4:]}"

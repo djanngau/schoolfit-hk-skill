@@ -16,11 +16,13 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SKILL_DIR = ROOT / "skills" / "schoolfit-hk"
 SCRIPT = SKILL_DIR / "scripts" / "schoolfit_api.py"
+MAX_CLAWHUB_RAW_FILE_BYTES = 204_800
 PUBLIC_DOCS = [
     SKILL_DIR / "SKILL.md",
     SKILL_DIR / "AUDIT.md",
     ROOT / "README.md",
     ROOT / "MARKETPLACE.md",
+    ROOT / "README_DEPLOY.md",
 ]
 
 
@@ -35,6 +37,7 @@ def main() -> int:
 
     skill = read(SKILL_DIR / "SKILL.md")
     script = read(SCRIPT)
+    clawhubignore = read(SKILL_DIR / ".clawhubignore") if (SKILL_DIR / ".clawhubignore").exists() else ""
     public_text = "\n".join(read(path) for path in PUBLIC_DOCS if path.exists())
 
     version_match = re.search(r'^version:\s*([0-9]+\.[0-9]+\.[0-9]+)$', skill, re.MULTILINE)
@@ -46,7 +49,10 @@ def main() -> int:
     checks.append(("runtime_no_env_reads", "os.environ" not in script and "getenv" not in script))
     checks.append(("runtime_no_local_doc_reads", "with open" not in script and "README.md" not in script and "MARKETPLACE.md" not in script))
     checks.append(("no_packaged_maintenance_commands", "self-check" not in skill and "marketplace-demo" not in script))
+    checks.append(("no_removed_commands_in_public_docs", "self-check" not in public_text and "marketplace-demo" not in public_text))
     checks.append(("query_disclosure_present", "Query disclosure" in skill and "https://schoolfit.hk/api/..." in skill))
+    checks.append(("clawhubignore_excludes_examples", "examples/" in clawhubignore.splitlines()))
+    checks.append(("helper_raw_preview_size", SCRIPT.stat().st_size <= MAX_CLAWHUB_RAW_FILE_BYTES))
 
     ok = all(passed for _, passed in checks)
     for name, passed in checks:

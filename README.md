@@ -1,6 +1,6 @@
 # SchoolFit
 
-Version: `1.1.11`
+Version: `1.2.0`
 
 SchoolFit is an evidence-first Hong Kong school admissions and school selection skill for agent platforms. It helps OpenClaw, ArkAgent, Claude Code, and compatible agents answer secondary school, primary school, kindergarten, international school, and postsecondary family questions with bounded data access, conservative ranking, and clear source separation.
 

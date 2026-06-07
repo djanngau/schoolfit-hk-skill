@@ -25,6 +25,17 @@ class SchoolFitApiTests(unittest.TestCase):
         with self.assertRaises(schoolfit_api.SchoolFitError):
             schoolfit_api.validate_base_url("http://schoolfit.hk")
 
+    def test_rejects_base_url_paths_queries_and_fragments(self):
+        for url in [
+            "https://schoolfit.hk/api",
+            "https://schoolfit.hk/skill-code",
+            "https://schoolfit.hk?next=/api/schools",
+            "https://schoolfit.hk#api",
+        ]:
+            with self.subTest(url=url):
+                with self.assertRaises(schoolfit_api.SchoolFitError):
+                    schoolfit_api.validate_base_url(url)
+
     def test_make_url_only_allows_api_paths(self):
         with self.assertRaises(schoolfit_api.SchoolFitError):
             schoolfit_api.make_url("https://schoolfit.hk", "/admin")
@@ -565,6 +576,10 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertEqual(payload["skillCodeHashPrefix"], schoolfit_api.code_hash_prefix(code))
         self.assertNotIn("sfhk", payload["skillCodeHashPrefix"])
         self.assertNotIn("123456", payload["skillCodeHashPrefix"])
+
+    def test_code_display_never_echoes_short_sfhk_code(self):
+        self.assertEqual(schoolfit_api.code_display("sfhk_abc"), "sfhk...")
+        self.assertEqual(schoolfit_api.authorization_footer("sfhk_abc")["display"], "sfhk...")
 
     def test_setup_code_validates_without_saving(self):
         args = schoolfit_api.build_parser().parse_args(["setup-code", "--code", "sfhk_setup_code"])
