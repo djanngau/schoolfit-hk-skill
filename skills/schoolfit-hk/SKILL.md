@@ -1,12 +1,21 @@
 ---
 name: schoolfit
 description: Use for Hong Kong school admissions, school selection, secondary school, primary school, kindergarten, international school, and postsecondary advisory workflows with SchoolFit.
-version: 1.1.8
+version: 1.1.11
 metadata:
   openclaw:
     homepage: https://github.com/djanngau/schoolfit-skill
     skillKey: schoolfit
     default_enabled: true
+    runtime:
+      network:
+        hosts:
+          - schoolfit.hk
+        paths:
+          - /api/...
+          - /skill-code
+      localFileAccess: false
+      environmentAccess: false
     requires:
       bins:
         - python3
@@ -43,6 +52,7 @@ Use SchoolFit only for Hong Kong school search, comparison, shortlisting, admiss
 Data access:
 
 - Only call `https://schoolfit.hk/api/...` through `scripts/schoolfit_api.py`.
+- The runtime helper does not read machine-local content, browser storage, or shell configuration.
 - Do not query local Postgres, Prisma, SQLite, JSON snapshots, raw source files, cookies, `.env` files, private project files, or the Edu source tree.
 - Treat Prisma/SQLite behind the public SchoolFit API as the canonical store.
 - Treat runtime snapshots and search indexes as DB-built read caches.
@@ -60,14 +70,20 @@ Session Access:
 - First use requires a SchoolFit access code from `https://schoolfit.hk/skill-code`.
 - Show the page exactly as `https://schoolfit.hk/skill-code`; strip query strings, hash fragments, tracking parameters, and path suffixes.
 - Tell users to paste the code only into a trusted one-to-one agent chat.
-- Keep the code only inside the active chat or the current helper invocation. Do not write it to disk, logs, examples, README files, issue trackers, commits, marketplace listings, screenshots, or final answers.
+- Keep the code only inside the active chat or the current helper invocation. Do not write it to disk, logs, examples, public docs, issue trackers, commits, marketplace listings, screenshots, or final answers.
 - Pass the code only via `--skill-code` or active chat context.
 - When a non-reserved `sfhk_...` code is used, disclose minimal usage telemetry before the first live query: command, endpoint, traceId, status/error, latency, activationStatus, skillVersion, and code hash prefix. Telemetry must not include the full code, raw query text, student name, HKID, phone, address, or report-card content.
+
+Query disclosure:
+
+- Before any live command that includes `--q`, tell the user their school-search preference text will be sent to `https://schoolfit.hk/api/...` for that request.
+- Ask the user to remove student names, HKID, phone numbers, addresses, report-card details, and private documents before a live query.
+- If the user wants local-only parsing first, use `parse-parent-request`; it does not call SchoolFit APIs.
 
 First-run message:
 
 ```text
-請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit 授權碼，複製後只發到這個你信任的一對一聊天窗口。不要貼到公開或多人聊天，也不要截圖外傳或寫入日誌。完整授權碼不會出現在最終回答。使用授權碼查詢時，helper 會向 SchoolFit 服務傳送最小用量紀錄（command、endpoint、traceId、status/error、latency、activationStatus、skillVersion、授權碼 hashPrefix），不包含完整授權碼或學生個人資料；如不同意，請不要貼碼或查詢。
+請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit 授權碼，複製後只發到這個你信任的一對一聊天窗口。不要貼到公開或多人聊天，也不要截圖外傳或寫入日誌。完整授權碼不會出現在最終回答。正式查詢時，你提供的找學校條件會送到 https://schoolfit.hk/api/...；請先刪走學生姓名、HKID、電話、地址、成績表或私人文件內容。使用授權碼查詢時，helper 會向 SchoolFit 服務傳送最小用量紀錄（command、endpoint、traceId、status/error、latency、activationStatus、skillVersion、授權碼 hashPrefix），不包含完整授權碼或學生個人資料；如不同意，請不要貼碼或查詢。
 ```
 
 ## Tool Entry Points
@@ -89,7 +105,6 @@ Use `<base_dir>` as the directory containing this `SKILL.md`.
 | Practical application timeline | `application-plan` |
 | EDB vacancy signal | `vacancies` |
 | Admission notice signal | `admissions` |
-| Package release sanity check | `self-check` |
 
 Minimal examples:
 
@@ -104,7 +119,7 @@ python3 <base_dir>/scripts/schoolfit_api.py vacancies --skill-code "PASTE_CODE" 
 
 ## Command Selection Rules
 
-Use `advisor-search` by default for parent advisory questions. It returns structured search results, parsed parent intent, `llmBrief.answerBlueprint`, `llmBrief.agentHandoff`, source policy, and follow-up guidance.
+Use `advisor-search` by default for parent advisory questions after the query-disclosure step above. It returns structured search results, parsed parent intent, `llmBrief.answerBlueprint`, `llmBrief.agentHandoff`, source policy, and follow-up guidance.
 
 Use `search-schools` only when the user wants a direct list or when another command needs preliminary search candidates. Supported filters include `--level`, `--district`, `--banding`, `--gender`, `--medium`, `--funding-type`, `--religion`, `--vacancy-grade`, `--vacancy-status`, and `--has-vacancy`.
 
@@ -202,38 +217,3 @@ Before responding, check:
 - Did I include vacancy/admission caveats when relevant?
 - Did I avoid asking for student identity or private documents?
 - Did I keep the answer short enough for a parent to act on?
-
-## Marketplace And Release Notes
-
-ClawHub is the canonical marketplace:
-
-```text
-openclaw skills install schoolfit
-clawhub install schoolfit
-/skill install clawhub:schoolfit
-ark skill install clawhub:schoolfit
-```
-
-GitHub direct install remains available for exact-path installs:
-
-```text
-/skill install djanngau/schoolfit-skill#skills/schoolfit-hk
-ark skill install djanngau/schoolfit-skill#skills/schoolfit-hk
-```
-
-Run before publishing:
-
-```bash
-python3 -m py_compile skills/schoolfit-hk/scripts/schoolfit_api.py
-python3 -m unittest discover -s tests
-python3 skills/schoolfit-hk/scripts/schoolfit_api.py self-check --format json
-python3 skills/schoolfit-hk/scripts/schoolfit_api.py quick-start --format json
-git diff --check
-```
-
-Audit context for ClawHub:
-
-- The skill is read-oriented: it returns school information, comparisons, checklists, and reminders.
-- It does not operate external school systems or act on behalf of a family.
-- Network access is restricted to the SchoolFit public API and the access-code page.
-- See `AUDIT.md` for the full audit boundary.

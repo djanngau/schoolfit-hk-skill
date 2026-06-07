@@ -6,7 +6,8 @@ This file documents the security and product boundary for ClawHub review.
 
 - The helper calls only `https://schoolfit.hk/api/...` and the session-code page at `https://schoolfit.hk/skill-code`.
 - The default base URL is fixed to `https://schoolfit.hk`; custom schemes, embedded user-info, ports, and non-API paths are rejected by the helper.
-- The skill does not read local databases, Prisma schemas, SQLite files, raw data snapshots, cookies, `.env` files, private project files, student files, or browser storage.
+- The published runtime helper does not read machine-local content, shell configuration, cookies, browser storage, or private project files.
+- The skill does not read local databases, Prisma schemas, SQLite files, raw data snapshots, `.env` files, student files, or browser storage.
 - The skill does not call `/api/agent/chat` in v1.
 
 ## Access Code
@@ -15,6 +16,12 @@ This file documents the security and product boundary for ClawHub review.
 - It is not a school account login or student identity.
 - Agents should keep the code only in the active one-to-one chat context or pass it with `--skill-code` for the current run.
 - The full code must not be written to disk, logs, examples, issue trackers, commits, screenshots, marketplace listings, or final answers.
+
+## Query Transmission
+
+- Live commands with `--q` send the provided school-search preference text to `https://schoolfit.hk/api/...` for that request.
+- Agents must tell users this before live queries and ask them to remove student names, HKID, phone numbers, addresses, report-card details, and private document contents.
+- `parse-parent-request` is the local-only option for first-pass parsing; it does not call SchoolFit APIs.
 
 ## Privacy And Telemetry
 

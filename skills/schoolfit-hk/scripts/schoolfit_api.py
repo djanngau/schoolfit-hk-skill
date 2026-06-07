@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
-"""SchoolFit API helper for OpenClaw-compatible skills.
-
-This script intentionally talks only to the public SchoolFit API. It does
-not read local databases, Prisma files, snapshots, cookies, or private project files.
-"""
+"""SchoolFit public API helper; no local project data access."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-import os
 import re
 import sys
 import time
@@ -18,13 +13,14 @@ import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from typing import Any
 
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.1.8"
-SKILL_VERSION_HEADER_VERSION = "1.1.8"
+SKILL_VERSION = "1.1.11"
+SKILL_VERSION_HEADER_VERSION = "1.1.11"
 MAX_COMPARE_IDS = 4
 ROBUST_SEARCH_PAGE_SIZE = 1000
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
@@ -41,9 +37,6 @@ SCHOOL_ANNUAL_AMOUNT_FIELD = "annual" + "Tui" + "tionHkd"
 AMOUNT_LABEL_RE = "(?:學" + "費|学" + "费|年度範圍|年度范围)"
 AMOUNT_EN_RE = "(?:annual_amount|annual amount|preference|under|below|max|tui" + "tion|bud" + "get|fe" + "es?)"
 PERSONAL_DATA_FLAG = "containsPossible" + "Sens" + "itive" + "Data"
-BASE_OVERRIDE_ENV = "SCHOOLFIT_BASE_" + "URL"
-PRIMARY_ACCESS_ENV = "SCHOOLFIT_SKILL_" + "CODE"
-LEGACY_ACCESS_ENV = "SCHOOLFIT_SKILL_" + "API_CODE"
 SKILL_REQUIRES_CODE_MESSAGE = (
     "請先開啟 https://schoolfit.hk/skill-code 取得 SchoolFit session access code，複製後直接在聊天窗口發給 Agent。"
 )
@@ -54,7 +47,7 @@ SKILL_USAGE_EVENT = "command_run"
 SKILL_TELEMETRY_ENDPOINT = "/api/skill/telemetry"
 SKILL_CODE_SAFETY_WARNING = (
     "SchoolFit session access code 屬於私密會話材料。只在你信任的一對一 Agent 聊天中貼上；不要貼到公開或多人聊天、"
-    "不要截圖外傳、不要寫入文件、日誌、issue、README、commit 或 marketplace material。"
+    "不要截圖外傳、不要寫入文件、日誌、issue、public docs、commit 或 marketplace material。"
 )
 SKILL_TELEMETRY_DISCLOSURE = (
     "使用非保留 SchoolFit session access code 查詢時，helper 會向 SchoolFit 服務傳送最小用量紀錄：command、endpoint、traceId、"
@@ -62,7 +55,7 @@ SKILL_TELEMETRY_DISCLOSURE = (
     "學生姓名、HKID、電話、地址或成績表內容；如不同意，請不要貼授權碼或發起查詢。"
 )
 SKILL_CODE_HASH_PREFIX_LEN = 8
-PUBLIC_COMMANDS = {"quick-start", "parse-parent-request", "school-levels", "marketplace-demo", "self-check"}
+PUBLIC_COMMANDS = {"quick-start", "parse-parent-request", "school-levels"}
 SKILL_CODE_RE = re.compile(r"\bsfhk_[A-Za-z0-9_-]{8,}\b")
 HKID_RE = re.compile(r"\b[A-Z]{1,2}\d{6}\(?[0-9A]\)?\b", re.IGNORECASE)
 HK_PHONE_RE = re.compile(r"(?<!\d)(?:\+?852[-\s]?)?[456789]\d{3}[-\s]?\d{4}(?!\d)")
@@ -292,7 +285,7 @@ def activation_url_policy() -> dict[str, Any]:
 
 
 def next_trace_id() -> TraceId:
-    return f"sf_{int(time.time() * 1000)}_{os.urandom(6).hex()}"
+    return f"sf_{int(time.time() * 1000)}_{uuid.uuid4().hex[:12]}"
 
 
 def code_hash_prefix(code: str | None) -> str:
@@ -362,7 +355,7 @@ def authorization_code_policy(footer: dict[str, Any] | None = None) -> dict[str,
         "whenMissing": "If no sfhk_ SchoolFit session access code is available, ask the user to open https://schoolfit.hk/skill-code and paste the code back into the same chat.",
         "privacy": (
             "The code is a trial-run access marker. Ask users to paste it only in a trusted one-to-one Agent chat. "
-            "Keep it only in active chat context or explicit runtime environment variables; do not write it to disk, README, examples, logs, commits, marketplace material or final answers."
+            "Keep it only in active chat context or the current helper invocation; do not write it to disk, public docs, examples, logs, commits, marketplace material or final answers."
         ),
     }
 
@@ -382,14 +375,6 @@ def apply_authorization_policy_to_briefs(value: Any, footer: dict[str, Any]) -> 
 def resolve_skill_code(cli_code: str | None = None, *, allow_fallback: bool = True) -> str | None:
     if cli_code and str(cli_code).strip():
         return str(cli_code).strip()
-
-    env_code = os.environ.get(PRIMARY_ACCESS_ENV, "").strip()
-    if env_code:
-        return env_code
-
-    legacy_code = os.environ.get(LEGACY_ACCESS_ENV, "").strip()
-    if legacy_code:
-        return legacy_code
 
     if allow_fallback:
         return SCHOOLFIT_SKILL_CLIENT_CODE
@@ -459,7 +444,7 @@ def activation_result_output(code: str | None, activation_status: ActivationMode
             if active else SKILL_REQUIRES_CODE_MESSAGE
         ),
         "chatMemoryInstruction": (
-            "Agent 應在本次對話上下文中使用此 SchoolFit session access code，後續 SchoolFit 工具調用用 --skill-code 傳入；不要寫入磁碟、README、日誌或 commit。"
+            "Agent 應在本次對話上下文中使用此 SchoolFit session access code，後續 SchoolFit 工具調用用 --skill-code 傳入；不要寫入磁碟、公開文檔、日誌或 commit。"
         ),
         "code": {
             "display": code_display(code),
@@ -1099,8 +1084,6 @@ def is_off_topic_or_abuse_text(text: str | None) -> bool:
     lowered = raw.lower()
     if not contains_any_text(raw, lowered, OFF_TOPIC_PATTERNS):
         return False
-    # Keep legitimate school-domain phrases such as "school model answer" from
-    # being blocked just because they contain a broad word like "model".
     return not contains_any_text(raw, lowered, SCHOOL_CONTEXT_PATTERNS)
 
 
@@ -2514,14 +2497,13 @@ def with_agent_handoff(brief: dict[str, Any]) -> dict[str, Any]:
             "matchUserLanguage": True,
             "supported": ["zh-Hant", "zh-Hans", "en"],
             "default": "zh-Hant",
-            "preserveHongKongTerms": ["Band 參考（僅中學適用）", "直資/DSS", "資助/aided", "官立/government", "EMI/CMI"],
+            "preserveHongKongTerms": ["Band 參考", "直資/DSS", "資助/aided", "EMI/CMI"],
         },
         "responsePlan": [
-            "Start with one short conclusion or clarification of the family's goal.",
-            "Use the returned facts/highlights first; do not browse or invent missing school facts.",
-            "List 3-6 schools/options when available, with one evidence-backed reason and SchoolFit URL each.",
+            "Start with the family's goal and the strongest returned options.",
+            "Use only returned facts/highlights; do not invent missing school facts.",
             "Separate official facts, non-official Band references, vacancy/admission signals, and assumptions.",
-            "End with 2-3 concrete next actions or at most three missing-info questions.",
+            "End with 2-3 next actions or at most three missing-info questions.",
         ],
         "hardRules": [
             "For secondary-school answers only, never call Banding official; use Band 參考 or 非官方 Band 參考.",
@@ -2537,35 +2519,28 @@ def with_agent_handoff(brief: dict[str, Any]) -> dict[str, Any]:
             "cta": brief.get("schoolfitCta") or "https://schoolfit.hk/",
         },
         "officialSiteVerificationPolicy": {
-            "purpose": "For high-freshness facts such as vacancies, admissions, deadlines, school official contact details and current notices, the downstream AI may compare SchoolFit data with the school's official website or returned official notice URLs.",
+            "purpose": "Only for high-freshness facts such as vacancies, admissions, deadlines, contact details and current notices.",
             "freshnessTriggers": ["vacancy", "學額", "插班", "admission", "申請", "deadline", "截止", "current", "latest", "最新", "今年", "open places"],
             "allowedUrlFields": [
                 "schools[].officialUrl",
                 "schools[].sourceUrl",
-                "topRecommendations[].school.officialUrl",
-                "topRecommendations[].school.sourceUrl",
                 "school.officialUrl",
                 "school.sourceUrl",
-                "schoolDetail.school.officialUrl",
-                "schoolDetail.school.sourceUrl",
                 "vacancies.source.sourceUrl",
-                "vacancies.summary.sourceUrl",
                 "admissions.summary.sourceUrl",
                 "admissions.records[].noticeUrl",
             ],
             "allowedActions": [
-                "Open or fetch only URLs explicitly returned in the current SchoolFit payload fields listed above.",
-                "Use the official page or notice only to verify high-freshness facts and cite it as a cross-check.",
+                "Open only URLs explicitly returned in the current SchoolFit payload.",
+                "Use official pages only to verify high-freshness facts and cite them as cross-checks.",
             ],
             "prohibitedActions": [
-                "Do not use search engines, web-wide browsing, social media, maps, directories or inferred domains.",
-                "Do not guess a school's website from its name, district or domain pattern.",
-                "Stay read-only; do not continue into school-system workflows, accounts, document upload areas, or unrelated external links.",
+                "Do not use search engines, social media, maps, directories or guessed domains.",
+                "Stay read-only; do not enter accounts, forms, upload areas or unrelated external links.",
             ],
             "comparisonProtocol": [
-                "State which SchoolFit snapshot fields were used and which returned official URL was checked.",
-                "If official-site data is newer or conflicts, label it as an official-site cross-check instead of silently overwriting SchoolFit data.",
-                "If the returned official URL cannot be fetched or does not mention the fact, say it could not be verified from the official site.",
+                "State which SchoolFit fields and returned official URL were checked.",
+                "If official-site data is newer or conflicts, label it as a cross-check.",
                 "Keep the vacancy caveat: availability is a time-limited lead, not an admission guarantee.",
             ],
         },
@@ -2587,30 +2562,30 @@ def with_agent_handoff(brief: dict[str, Any]) -> dict[str, Any]:
         "followUpPolicy": {
             "maxQuestions": 3,
             "preferOptionalRefinements": True,
-            "askFor": ["school stage", "district/commute", "Band or route", "DSS/annual_amount preference", "language preference"],
+            "askFor": ["school stage", "district/commute", "Band or route", "DSS/annual amount preference", "language preference"],
             "doNotAskFor": ["student full name", "HKID", "phone", "address", "report-card PDF"],
         },
         "contactPolicy": {
             "schoolContactAllowed": True,
             "allowedFields": ["official school phone", "official school email", "official website", "school address"],
-            "rule": "It is allowed to answer questions asking for a school's official contact details when returned by the SchoolFit API.",
+            "rule": "Answer school contact questions only from returned SchoolFit API fields.",
             "privacyBoundary": "Do not ask for, store, repeat, or infer a parent's or student's personal phone/email/address.",
         },
         "authorizationCodePolicy": authorization_code_policy(),
         "formatPolicy": {
             "defaultShape": "short_conclusion_then_ranked_options_then_caveats_then_next_steps",
-            "finalFooter": "End parent-facing final answers with source and data updated lines. Never display the exact sfhk_ SchoolFit session access code; if debugging is needed, use only hashPrefix.",
+            "finalFooter": "End final answers with source and data updated lines. Never display the exact sfhk_ code; use only hashPrefix for debugging.",
             "avoid": ["database-console tone", "raw internal keys", "unsupported rankings", "overconfident admissions advice"],
         },
         "qualityChecksBeforeFinal": [
             "Does the answer match the user's language?",
-            "Are every school facts traceable to returned fields or sourceLedger?",
-            "For high-freshness facts, did any web verification use only URLs returned by SchoolFit?",
+            "Are school facts traceable to returned fields or sourceLedger?",
+            "Did high-freshness checks use only URLs returned by SchoolFit?",
             "Are Band references labelled as non-official references?",
             "Are vacancy/admission caveats included when used?",
             "Were explicit hard preferences such as no DSS or girls-only respected?",
             "Did the answer avoid asking for personal identifiers or private documents?",
-            "If an sfhk_ SchoolFit session access code is available, did the answer avoid displaying the exact code and keep it only for tool calls?",
+            "Did the answer avoid displaying the exact code?",
         ],
     }
     return brief
@@ -2622,14 +2597,14 @@ def quick_start_output(trace_id: TraceId) -> dict[str, Any]:
         "activationStatus": "not_required",
         "activationUrl": canonical_activation_url(),
         "activationUrlPolicy": activation_url_policy(),
-        "message": "安裝完成後，請先取得 SchoolFit session access code，並只貼回你信任的一對一 Agent 聊天窗口。",
+        "message": "請先取得 SchoolFit session access code，並只貼回可信的一對一 Agent 聊天。",
         "privateCodeWarning": SKILL_CODE_SAFETY_WARNING,
         "telemetryDisclosure": SKILL_TELEMETRY_DISCLOSURE,
         "consentNotice": "貼上 SchoolFit session access code 並要求查詢，即表示你同意本次 SchoolFit API 調用和上述最小用量紀錄。",
         "interactionStyle": INTERACTION_STYLE,
         "friendlyOpening": "你可以直接用日常說法問我，例如想看哪個區、哪類學校、重視英文環境或年度範圍，我會先整理條件再查。",
         "coverage": {
-            "summary": "SchoolFit Skill 支援中學、小學、幼稚園、國際學校和專上教育資料庫。",
+            "summary": "SchoolFit 支援中學、小學、幼稚園、國際學校和專上教育庫。",
             "levels": [
                 {"level": level, "label": SCHOOL_LEVEL_LABELS[level], "count": SCHOOL_LEVEL_COUNTS[level]}
                 for level in SCHOOL_LEVELS
@@ -2647,20 +2622,6 @@ def quick_start_output(trace_id: TraceId) -> dict[str, Any]:
                 "text": "只把 code 原文發在你信任的同一個一對一聊天窗口，例如：我的 SchoolFit 授權碼是 sfhk_xxxxx；不要貼到公開或多人聊天。",
             },
             {"label": "開始提問", "text": "例如：幫我找沙田 Band 1 英文男女校，或查九龍城小學、港島國際學校、JUPAS/副學士銜接。"},
-        ],
-        "agentRules": [
-            "Agent 可在本次聊天上下文使用該 code；不要寫入本地文件、日誌、README 或 Git。",
-            "正式查詢請把 code 作為 --skill-code 傳入 helper。",
-            "最終回答不得顯示完整 sfhk_ code；需要排查時只使用 hashPrefix。",
-            "不要要求家長提供 HKID、電話、住址、成績表 PDF 等私密資料。",
-        ],
-        "examples": [
-            "幫我找沙田 Band 1 英文男女校，按 Safe/Match/Reach 分組。",
-            "九龍城有哪些小學適合英文環境和通勤短的家庭？",
-            "想了解港島國際學校和 IB/A-Level 路線。",
-            "幫我看 JUPAS、HD/副學士銜接的專上教育選項。",
-            "比較 sha-tin-methodist-college 和 ying-wa-girls-school。",
-            "幫我為兩間目標學校做 45 天申請計劃。",
         ],
         "skillVersion": SKILL_VERSION,
         "traceId": trace_id,
@@ -2695,216 +2656,6 @@ def school_levels_output(trace_id: TraceId) -> dict[str, Any]:
         "dataArchitecture": DATA_ARCHITECTURE_CONTRACT,
         "skillVersion": SKILL_VERSION,
         "traceId": trace_id,
-        "sourceLedger": build_source_ledger(),
-    }
-
-
-def marketplace_demo_payload() -> dict[str, Any]:
-    return {
-        "coverage": {
-            "summary": "One Skill covers all current SchoolFit school databases.",
-            "levels": [
-                {"level": level, "label": SCHOOL_LEVEL_LABELS[level], "count": SCHOOL_LEVEL_COUNTS[level]}
-                for level in SCHOOL_LEVELS
-            ],
-        },
-        "distributionPolicy": {
-            "primaryMarketplace": "ClawHub",
-            "fallbackOrder": ["ClawHub", "skills.sh", "GitHub"],
-            "installCommands": [
-                "openclaw skills install schoolfit",
-                "clawhub install schoolfit",
-                "/skill install clawhub:schoolfit",
-                "ark skill install clawhub:schoolfit",
-                "/skill install djanngau/schoolfit-skill#skills/schoolfit-hk",
-                "ark skill install djanngau/schoolfit-skill#skills/schoolfit-hk",
-            ],
-            "notes": [
-                "Use ClawHub first for OpenClaw-native discovery, versioning, moderation and inspect flows.",
-                "Use skills.sh as a secondary cross-agent index for GitHub-backed SKILL.md discovery.",
-                "Use GitHub direct install only when registry lookup is unavailable or an exact repository path is required.",
-            ],
-        },
-        "examples": [
-            {
-                "title": "首次啟用",
-                "prompt": "我剛安裝 SchoolFit Skill，要怎樣開始？",
-                "command": "quick-start --format markdown",
-                "resultSummary": "提示家長打開 https://schoolfit.hk/skill-code 取 SchoolFit session access code，然後貼回聊天窗口。",
-            },
-            {
-                "title": "查看支援資料庫",
-                "prompt": "SchoolFit Skill 支援哪些學校資料庫？",
-                "command": "school-levels --format markdown",
-                "resultSummary": "列出中學、小學、幼稚園、國際學校、專上教育庫的數量、--level 參數和示例問法。",
-            },
-            {
-                "title": "Band 1 英文首選",
-                "prompt": "找沙田 Band 1 英文男女校，先做安全梯隊。",
-                "command": "advisor-search --q \"沙田 Band 1 英文 男女校，重視校風，不考慮直資\" --intent recommend --priorities 校風 英文 --no-dss --include-decision-brief",
-                "resultSummary": "自動抽取地區、Band、性別和語言，返回 parentQuestion、answerBlueprint、decisionBriefs 和可由大模型潤色的 shortlist brief。",
-            },
-            {
-                "title": "小學資料庫查詢",
-                "prompt": "九龍城有哪些小學適合英文環境和通勤短的家庭？",
-                "command": "advisor-search --level primary --q \"九龍城 小學 英文環境 通勤短\" --intent recommend --priorities 英文環境 通勤",
-                "resultSummary": "以小學資料庫為範圍，保留地區、語言和通勤條件，不套用中學 Band 假設。",
-            },
-            {
-                "title": "國際學校路線",
-                "prompt": "想了解港島國際學校和 IB/A-Level 路線。",
-                "command": "advisor-search --level international --q \"港島 國際學校 IB A-Level\" --intent search --boarding",
-                "resultSummary": "以國際學校資料庫搜尋，將 curriculum/boarding 等訊號作為查詢條件。",
-            },
-            {
-                "title": "專上教育選項",
-                "prompt": "幫我看 JUPAS、HD/副學士銜接的專上教育選項。",
-                "command": "advisor-search --level postsecondary --q \"JUPAS HD 副學士 銜接\" --intent search",
-                "resultSummary": "以專上教育庫為範圍，避免把 College 字眼誤判為中學 Band 場景。",
-            },
-            {
-                "title": "家長自然語言拆解",
-                "prompt": "九龍城 Band 1 女校，英文環境，唔要直資，想穩陣。",
-                "command": "parse-parent-request --q \"九龍城 Band 1 女校 英文環境 唔要直資 想穩陣\"",
-                "resultSummary": "不打 API，先解析 filters、推薦訊號和缺失條件。",
-            },
-            {
-                "title": "模糊學校名找 slug",
-                "prompt": "SPCC 是哪間？幫我找 SchoolFit slug。",
-                "command": "resolve-school --name \"SPCC\"",
-                "resultSummary": "返回候選學校、slug、SchoolFit URL 和確認提示。",
-            },
-            {
-                "title": "建立短名單",
-                "prompt": "沙田 Band 1 英文男女校，幫我分首選、穩陣、備選，不考慮直資。",
-                "command": "shortlist-builder --q \"沙田 Band 1 英文 男女校，不考慮直資\" --no-dss",
-                "resultSummary": "按首選/穩陣/備選/暫不建議輸出，並保留 DSS、學額和 Band caveats。",
-            },
-            {
-                "title": "學額與招生",
-                "prompt": "中四是否有學額？有沒有申請期限？",
-                "command": "vacancies --grade S4 --district 沙田區 --has-vacancy true\nadmissions --grade S4 --is-active true",
-                "resultSummary": "學額與招生分開輸出 source、dataMonth/lastSeenAt/confidence 和核實提示。",
-            },
-            {
-                "title": "升中銜接關係",
-                "prompt": "查一條龍、直屬、聯繫小學和中學關係。",
-                "command": "school-relationships --type all --q \"基道\" --matched-only --format markdown",
-                "resultSummary": "返回 EDB 一條龍與 CHSC 直屬/聯繫關係，並提醒關係不等於保證錄取。",
-            },
-            {
-                "title": "單校決策摘要",
-                "prompt": "幫我深挖沙田循道中學的學額、招生和風險。",
-                "command": "decision-brief sha-tin-methodist-college",
-                "resultSummary": "返回 compact parent decision brief、學額/招生摘要、sourceLedger 和核實提示。",
-            },
-            {
-                "title": "申請計劃",
-                "prompt": "幫我為兩間目標學校做 45 天申請計劃。",
-                "command": "application-plan --school-slugs sha-tin-methodist-college,ying-wa-girls-school --deadline-window-days 45",
-                "resultSummary": "返回 timeline、checklist、reminders 和每校 SchoolFit 入口。",
-            },
-        ],
-        "commandMap": [
-            {"name": "quick-start", "description": "安裝後第一步，指引用戶取碼並貼回聊天窗口。"},
-            {"name": "school-levels", "description": "免授權查看五類資料庫、--level 用法和示例問題。"},
-            {"name": "activate", "description": "Agent 收到 sfhk_ SchoolFit session access code 後可用它驗碼，不要求用戶操作命令行。"},
-            {"name": "parse-parent-request", "description": "把家長自然語言拆成可查詢條件，且不調 API。"},
-            {"name": "resolve-school", "description": "把模糊學校名、簡稱或英文名解析成 SchoolFit slug 候選。"},
-            {"name": "advisor-search", "description": "對話式建議主入口，可用 --level 指定中學、小學、幼稚園、國際學校或專上教育庫。"},
-            {"name": "shortlist-builder", "description": "把搜尋結果整理成首選、穩陣、備選和暫不建議。"},
-            {"name": "deep-compare", "description": "比較 2-4 間學校，產生差異、風險與下一步。"},
-            {"name": "school-relationships", "description": "查一條龍、直屬、聯繫小學/中學關係，與 SchoolFit 主題頁一致。"},
-            {"name": "decision-brief", "description": "生成單校 compact 決策摘要，含學額/招生時效核對點。"},
-            {"name": "school-report", "description": "decision-brief 的兼容別名，供舊 Agent 提示使用。"},
-            {"name": "application-plan", "description": "生成家庭落地型申請清單與跟進節奏。"},
-            {"name": "self-check", "description": "本地檢查 Skill 結構、版本、示例和私密字串。"},
-        ],
-    }
-
-
-def self_check_output() -> dict[str, Any]:
-    skill_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    repo_dir = os.path.dirname(os.path.dirname(skill_dir))
-    required_core = [
-        os.path.join(skill_dir, "SKILL.md"),
-        os.path.join(skill_dir, "AUDIT.md"),
-        os.path.join(skill_dir, "scripts", "schoolfit_api.py"),
-        os.path.join(skill_dir, "examples", "first-run.md"),
-    ]
-    checks = []
-    ok = True
-    for path in required_core:
-        exists = os.path.exists(path)
-        ok = ok and exists
-        checks.append({"name": os.path.relpath(path, repo_dir), "ok": exists})
-    for doc_name in ("README.md", "MARKETPLACE.md"):
-        candidates = [os.path.join(repo_dir, doc_name), os.path.join(skill_dir, doc_name)]
-        exists = any(os.path.exists(path) for path in candidates)
-        ok = ok and exists
-        checks.append({"name": doc_name, "ok": exists})
-
-    script_path = os.path.join(skill_dir, "scripts", "schoolfit_api.py")
-    with open(script_path, "r", encoding="utf-8") as handle:
-        script = handle.read()
-    skill_path = os.path.join(skill_dir, "SKILL.md")
-    with open(skill_path, "r", encoding="utf-8") as handle:
-        skill_markdown = handle.read()
-    public_doc_text = skill_markdown
-    for doc_name in ("README.md", "MARKETPLACE.md"):
-        doc_path = os.path.join(repo_dir, doc_name)
-        if os.path.exists(doc_path):
-            with open(doc_path, "r", encoding="utf-8") as handle:
-                public_doc_text += "\n" + handle.read()
-    chat_path = "/api/" + "agent/chat"
-    forbidden_persistence_patterns = [
-        "SCHOOLFIT_SKILL_" + "CONFIG_PATH_ENV",
-        "DEFAULT_SKILL_" + "CONFIG_PATH",
-        "json" + ".dump(" + "payload",
-        "os" + ".makedirs(os.path." + "dirname",
-    ]
-    forbidden_exact_footer_patterns = [
-        "Authorization code: the " + "exact",
-        "carrying that " + "exact",
-        "footer include that " + "exact",
-        "finalAnswerFooter.authorization" + "Code",
-    ]
-    legacy_clawhub_slug = "clawhub:schoolfit" + "-hk"
-    legacy_clawhub_url = "clawhub.ai/djanngau/schoolfit" + "-hk"
-    legacy_brand_name = "SchoolFit" + " HK" + " Skill"
-    legacy_title_case_brand = "Schoolfit" + " " + "Hk"
-    legacy_shell_install = "sh skill/bin/" + "install.sh"
-    legacy_node_install = "node skill/bin/" + "schoolfit-skill.mjs"
-    script_checks = [
-        ("version_current", f'SKILL_VERSION = "{SKILL_VERSION}"' in script),
-        ("host_allowlist", "ALLOWED_HOSTS = {\"schoolfit.hk\"}" in script),
-        ("activation_page", ACTIVATION_PAGE_URL in script),
-        ("pii_guard", "detect_personal_input" in script),
-        ("off_topic_boundary", "detect_off_topic_input" in script and "shouldCallModelApi" in script),
-        ("no_agent_chat_default", chat_path not in script),
-        ("data_architecture_contract", "DATA_ARCHITECTURE_CONTRACT" in script and "not-primary-store" in script),
-        ("no_local_code_persistence", not any(pattern in script for pattern in forbidden_persistence_patterns)),
-        ("no_exact_code_final_footer", not any(pattern in script for pattern in forbidden_exact_footer_patterns)),
-        ("clawhub_slug_current", legacy_clawhub_slug not in public_doc_text and legacy_clawhub_url not in public_doc_text),
-        ("brand_current", legacy_brand_name not in public_doc_text and legacy_title_case_brand not in public_doc_text),
-        ("metadata_session_code_only", BASE_OVERRIDE_ENV not in skill_markdown and LEGACY_ACCESS_ENV not in skill_markdown),
-        ("no_legacy_install_path", legacy_shell_install not in public_doc_text and legacy_node_install not in public_doc_text),
-        ("audit_doc_present", os.path.exists(os.path.join(skill_dir, "AUDIT.md"))),
-    ]
-    for name, passed in script_checks:
-        ok = ok and passed
-        checks.append({"name": name, "ok": passed})
-
-    return {
-        "command": "self-check",
-        "ok": ok,
-        "skillVersion": SKILL_VERSION,
-        "checks": checks,
-        "notes": [
-            "This is a local package sanity check; it does not call SchoolFit APIs.",
-            "Run unit tests and a live metadata smoke test before marketplace release.",
-        ],
-        "dataArchitecture": DATA_ARCHITECTURE_CONTRACT,
         "sourceLedger": build_source_ledger(),
     }
 
@@ -3006,8 +2757,6 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
         return payload if isinstance(payload, dict) else school_levels_output(next_trace_id())
     if command == "parse-parent-request":
         return payload if isinstance(payload, dict) else parse_parent_request_text(str(payload or ""))
-    if command == "self-check":
-        return payload if isinstance(payload, dict) else self_check_output()
     if command == "school-relationships":
         relationships = payload.get("relationships", []) if isinstance(payload, dict) else []
         output = {
@@ -3174,18 +2923,6 @@ def compact_output(command: str, payload: Any) -> dict[str, Any]:
             "sourceLedger": payload.get("sourceLedger", source_ledger),
         }
         output["notes"] = filtered_source_notes(output)
-        return output
-    if command == "marketplace-demo":
-        output = {
-            "distributionPolicy": payload.get("distributionPolicy", {}),
-            "examples": payload.get("examples", []),
-            "commandMap": payload.get("commandMap", []),
-            "notes": [
-                "Market-ready commands should map to concise actionable parent-facing answers.",
-                "Never add facts outside API-returned content.",
-            ],
-            "sourceLedger": source_ledger,
-        }
         return output
     if command == "recommend":
         output = {**payload}
@@ -4063,43 +3800,32 @@ def print_authorization_footer(data: dict[str, Any]) -> None:
 def print_markdown(command: str, data: dict[str, Any]) -> None:
     if data.get("needsActivation"):
         print("## 先取一個 SchoolFit session access code\n")
-        print("我可以幫你查中學、小學、幼稚園、國際學校和專上教育資料。第一次使用前，請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit session access code，然後直接貼回這個聊天窗口。")
-        print("\n如果打開後找不到頁面，請確認網址只保留到 `/skill-code`，刪除後面的 `?`、`#` 或其他字串。")
+        print("請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit session access code，然後只貼回這個一對一聊天窗口。")
         print("\n### 安全提醒")
         print(data.get("privateCodeWarning") or SKILL_CODE_SAFETY_WARNING)
         print("\n### 用量紀錄")
         print(data.get("telemetryDisclosure") or SKILL_TELEMETRY_DISCLOSURE)
-        print("\n收到後我會直接幫你查，不需要你操作命令行。")
-        print("\n### 你可以這樣發")
-        print("```text")
-        print(data.get("example") or "我的 SchoolFit 授權碼是 sfhk_xxxxxxxxxxxxxxxx")
-        print("```")
         print(f"\n> {data.get('consentNotice') or '貼上授權碼並要求查詢，即表示你同意本次 SchoolFit API 調用和最小用量紀錄。'}")
         return
+
     if data.get("privacyWarning"):
         print("## 先保護學生私隱\n")
         print(data.get("friendlyMessage") or INTERACTION_STYLE["privacyReassurance"])
-        print("\n### 可以保留這些條件")
         for item in data.get("allowedAlternatives", []):
             print(f"- {item}")
         return
+
     if data.get("offTopicBoundary"):
         print("## SchoolFit 範圍\n")
         print(data.get("friendlyMessage") or data.get("message") or OFF_TOPIC_BOUNDARY_MESSAGE)
-        print("\n### 可以改問")
         for item in data.get("allowedExamples", []):
             print(f"- {item}")
         return
+
     if command == "quick-start":
         print("## SchoolFit Skill 快速開始\n")
         if data.get("friendlyOpening"):
             print(f"{data.get('friendlyOpening')}\n")
-        coverage = data.get("coverage") or {}
-        if coverage.get("levels"):
-            print("### 支援資料庫")
-            for item in coverage.get("levels", []):
-                print(f"- {item.get('label')}：{item.get('count')} 筆")
-            print("")
         for index, step in enumerate(data.get("steps", []), start=1):
             print(f"{index}. **{step.get('label')}**：{step.get('text')}")
         if data.get("privateCodeWarning"):
@@ -4108,31 +3834,8 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
             print(f"\n### 用量紀錄\n{data.get('telemetryDisclosure')}")
         if data.get("consentNotice"):
             print(f"\n> {data.get('consentNotice')}")
-        print("\n### 示例問題")
-        for item in data.get("examples", []):
-            print(f"- {item}")
         return
-    if command == "school-levels":
-        print("## SchoolFit 支援資料庫\n")
-        coverage = data.get("coverage") or {}
-        print(f"總覆蓋: {coverage.get('total', 0)} 筆\n")
-        for item in coverage.get("levels", []):
-            print(f"### {item.get('label')} `{item.get('cli')}`")
-            print(f"- 數量: {item.get('count')}")
-            for prompt in item.get("examplePrompts", []):
-                print(f"- 例子: {prompt}")
-            print("")
-        print("### 建議流程")
-        for step in data.get("recommendedFlow", []):
-            print(f"- {step}")
-        architecture = data.get("dataArchitecture") or {}
-        if architecture:
-            print("\n### 資料結構")
-            print(f"- canonical store: {architecture.get('canonicalStore')}")
-            print(f"- runtime snapshot: {(architecture.get('runtimeSnapshot') or {}).get('role')}")
-            print(f"- list indexes: {(architecture.get('listIndexes') or {}).get('role')}")
-            print(f"- Redis: {architecture.get('redisPolicy')}")
-        return
+
     if command == "parse-parent-request":
         print("## 我先幫你整理到這裡\n")
         follow_up = data.get("friendlyFollowUp") or {}
@@ -4165,84 +3868,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         print(f"> {follow_up.get('sourceReminder') or INTERACTION_STYLE['sourceReassurance']}")
         print("\n下一步：可直接用 `advisor-search` 查 SchoolFit；如果已確定資料庫，可加 `--level secondary|primary|kindergarten|international|postsecondary`。")
         return
-    if command == "self-check":
-        print("## SchoolFit Skill 自檢\n")
-        print(f"狀態: {'OK' if data.get('ok') else '需要處理'}")
-        for check in data.get("checks", []):
-            print(f"- {'OK' if check.get('ok') else 'FAIL'} {check.get('name')}")
-        architecture = data.get("dataArchitecture") or {}
-        if architecture:
-            print("\n### 資料結構")
-            print(f"- canonical store: {architecture.get('canonicalStore')}")
-            print(f"- source JSON: {architecture.get('sourceJsonPolicy')}")
-            print(f"- Redis: {architecture.get('redisPolicy')}")
-        return
-    if command == "activate":
-        print("## SchoolFit 授權狀態\n")
-        print(data.get("message") or "")
-        print(f"\n- status: `{data.get('activationStatus')}`")
-        print(f"- code: `{(data.get('code') or {}).get('display')}`")
-        return
-    if command == "resolve-school":
-        print("## SchoolFit 學校名解析\n")
-        for item in data.get("candidates", [])[:8]:
-            print(f"- **{item.get('nameZh') or item.get('nameEn') or item.get('slug')}**")
-            print(f"  - slug: `{item.get('slug')}`")
-            print(f"  - SchoolFit: {item.get('schoolfitUrl')}")
-            print(f"  - {item.get('matchHint')}")
-        print("\n### 下一步")
-        for action in data.get("nextActions", []):
-            print(f"- {action}")
-        return
-    if command == "shortlist-builder":
-        print("## SchoolFit 短名單\n")
-        for bucket, items in (data.get("buckets") or {}).items():
-            print(f"### {bucket}")
-            if not items:
-                print("- 暫無")
-                continue
-            for item in items[:5]:
-                school = item.get("school") or {}
-                print(f"- **{school.get('nameZh') or school.get('nameEn') or school.get('slug')}**")
-                print(f"  - {school.get('schoolfitUrl')}")
-                for reason in item.get("rankingRationale", [])[:3]:
-                    print(f"  - {reason}")
-                for risk in item.get("fitRisks", [])[:2]:
-                    print(f"  - 風險: {risk}")
-        if data.get("missingInfoQuestions"):
-            print("\n### 可補充資料")
-            for question in data.get("missingInfoQuestions", []):
-                print(f"- {question}")
-        if data.get("preferenceWarnings"):
-            print("\n### 偏好提示")
-            for warning in data.get("preferenceWarnings", []):
-                print(f"- {warning}")
-        if data.get("rankingPolicy"):
-            print("\n### 分桶規則")
-            for policy in data.get("rankingPolicy", []):
-                print(f"- {policy}")
-        print_caveats(data)
-        return
-    if command == "school-relationships":
-        print(f"## SchoolFit 升中銜接關係\n\n共 {data.get('count', 0)} 筆。")
-        print(f"\nSchoolFit: {data.get('schoolfitUrl')}")
-        for item in data.get("relationships", [])[:30]:
-            primary = item.get("primary") or {}
-            secondary = item.get("secondary") or {}
-            print(f"- **{primary.get('nameZh') or primary.get('nameEn')}** → **{secondary.get('nameZh') or secondary.get('nameEn')}**")
-            print(f"  - 類型: {item.get('typeLabel') or item.get('type')} | 來源: {item.get('sourceLabel') or item.get('source')} | confidence: {item.get('confidence')}")
-            if primary.get("schoolfitUrl"):
-                print(f"  - 小學: {primary.get('schoolfitUrl')}")
-            if secondary.get("schoolfitUrl"):
-                print(f"  - 中學: {secondary.get('schoolfitUrl')}")
-            if item.get("notes"):
-                print(f"  - 備註: {item.get('notes')}")
-        policy = data.get("sourcePolicy") or []
-        if policy:
-            print("\n### 資料邊界")
-            for note in policy:
-                print(f"- {note}")
-        return
+
     if command == "search-schools":
         print(f"## SchoolFit 搜尋結果\n\n共 {data.get('count', 0)} 間。")
         if data.get("robustSearch"):
@@ -4260,169 +3886,31 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
                 print(f"  - Band 參考: {school.get('bandingReference') or '暫無可靠資料'}")
         print_caveats(data)
         return
-    if command == "advisor-search":
-        search = data.get("search") or {}
-        recommendation = data.get("recommendation") or {}
-        print(f"## SchoolFit 智能選校簡報\n\n搜尋共 {search.get('count', 0)} 間。")
-        top_recommendations = ((recommendation.get("llmBrief") or {}).get("topRecommendations") or [])[:6]
-        if top_recommendations:
-            print("\n### 建議先看")
-            for item in top_recommendations:
-                print(f"- **{item.get('school')}** — {item.get('bucket') or item.get('fitLabel')}")
-                if item.get("decisionBrief"):
-                    print(f"  - {item.get('decisionBrief')}")
-                print(f"  - {item.get('url')}")
-        else:
-            print("\n### 搜尋亮點")
-            for item in ((search.get("llmBrief") or {}).get("highlights") or [])[:6]:
-                print(f"- **{item.get('school')}**: {item.get('whyMention')}")
-                print(f"  - {item.get('url')}")
-        print("\n### 下一步")
-        for action in data.get("nextActions", []):
-            print(f"- {action}")
-        print_caveats(data)
-        return
-    if command == "vacancies":
-        source = data.get("source") or {}
-        print("## SchoolFit 學額資料")
-        print(f"\n來源: {source.get('sourceName', '未知')}  \n擷取時間: {source.get('fetchedAt', '未知')}  \n共 {data.get('count', 0)} 筆。")
-        for item in data.get("vacancies", [])[:30]:
-            print(f"- {item.get('schoolNameRaw')} / {item.get('grade')}: {item.get('status')}")
-            print(f"  - dataMonth: {item.get('dataMonth')} | lastSeenAt: {item.get('lastSeenAt')} | confidence: {item.get('confidence')}")
-        print(f"\n> {data.get('caveat')}")
-        return
-    if command == "admissions":
-        source = data.get("source") or {}
-        print("## SchoolFit 招生通告")
-        print(f"\n來源: {source.get('sourceName', '未知')}  \n擷取時間: {source.get('fetchedAt', '未知')}  \n共 {data.get('count', 0)} 則。")
-        for item in data.get("notices", [])[:20]:
-            print(f"- **{item.get('title')}**")
-            print(f"  - schoolId: `{item.get('schoolId')}` | grades: {', '.join(item.get('applicationGrades') or [])}")
-            print(f"  - deadline: {item.get('deadline') or '暫無'} | active: {item.get('isActive')} | confidence: {item.get('confidence')}")
-            print(f"  - url: {item.get('noticeUrl')}")
-        print(f"\n> {data.get('caveat')}")
-        return
-    if command == "deep-compare":
-        print("## SchoolFit 深度比較")
-        schools = data.get("schools", [])
-        for item in schools[:4]:
-            print(f"- **{item.get('nameZh') or item.get('nameEn') or item.get('slug')}**")
-            if school_uses_banding(item):
-                print(f"  - Band 參考: {item.get('bandingReference') or '暫無可靠資料'}")
-            print(f"  - 校網: {item.get('schoolfitUrl')}")
-            vacancy_summary = item.get("vacancySummary") or {}
-            vacancy_display_label = (vacancy_summary.get("display") or {}).get("label")
-            vacancy = vacancy_summary.get("hasAnyVacancy")
-            print(f"  - 學額: {vacancy_display_label or ('有學額' if vacancy is True else '暫無可跟進學額' if vacancy is False else '學位狀況更新中')}")
-            print(f"  - 招生通告: {(item.get('admissionNoticeSummary') or {}).get('noticeCount', 0)} 則")
-        print("\n### 下一步")
-        for action in data.get("nextActions", []):
-            print(f"- {action}")
-        if data.get("comparison"):
-            compare_summary = data["comparison"]
-            if isinstance(compare_summary, dict):
-                print(f"\n### 比較摘要")
-                for key in ("insights", "summary"):
-                    if key in compare_summary:
-                        print(f"- {key}: {compare_summary[key]}")
-        print_caveats(data)
-        return
-    if command in {"decision-brief", "school-report"}:
-        school = data.get("school") or {}
-        print("## SchoolFit 單校決策摘要")
-        print(f"學校: {school.get('nameZh') or school.get('nameEn') or school.get('slug')}  \n學區: {school.get('district') or '未知'}")
-        if school_uses_banding(school):
-            print(f"Band 參考: {school.get('bandingReference') or '暫無可靠資料'}  \n年度範圍: {school.get(SCHOOL_ANNUAL_AMOUNT_FIELD) or '暫無可靠資料'}")
-        else:
-            print(f"年度範圍: {school.get(SCHOOL_ANNUAL_AMOUNT_FIELD) or '暫無可靠資料'}")
-        print(f"官方/資料入口: {school.get('schoolfitUrl')}\n")
-        if (school.get("vacancySummary") or {}).get("dataMonth"):
-            vacancy = school.get("vacancySummary") or {}
-            print("### 學額快訊")
-            print(f"- dataMonth: {vacancy.get('dataMonth')} / lastSeenAt: {vacancy.get('lastSeenAt')} / confidence: {vacancy.get('confidence') or 'N/A'}")
-        if (school.get("admissionNoticeSummary") or {}).get("nextDeadline"):
-            admission = school.get("admissionNoticeSummary") or {}
-            print("### 招生快訊")
-            print(f"- nextDeadline: {admission.get('nextDeadline')} / activeNoticeCount: {admission.get('activeNoticeCount')}")
-        if data.get("vacancies"):
-            print("### 學額明細")
-            for item in data["vacancies"].get("records", [])[:6]:
-                print(f"- {item.get('schoolNameRaw')} / {item.get('grade')}: {item.get('status')} ({item.get('confidence')})")
-        if data.get("admissions"):
-            print("### 招生通告")
-            for item in data["admissions"].get("records", [])[:6]:
-                print(f"- {item.get('title')}  (deadline: {item.get('deadline')})")
-        print("\n### 下一步")
-        for action in data.get("nextActions", []):
-            print(f"- {action}")
-        print("### 檢核清單")
-        for item in data.get("checklist", []):
-            print(f"- {item}")
-        print(f"\n> {VACANCY_CAVEAT if data.get('vacancies') else ADMISSION_CAVEAT}")
-        print_caveats(data)
-        return
-    if command == "application-plan":
-        plan = data.get("plan") or {}
-        print("## SchoolFit 申請計劃")
-        for item in data.get("items", [])[:20]:
-            print(f"- {item}")
 
-        schools = data.get("schools") or []
-        if schools:
-            print("\n### 目標學校")
-            for school in schools[:4]:
-                print(f"- {school.get('nameZh') or school.get('nameEn') or school.get('slug')}")
-                if school.get("schoolfitUrl"):
-                    print(f"  - SchoolFit: {school.get('schoolfitUrl')}")
-                if school.get("officialUrl"):
-                    print(f"  - 官網: {school.get('officialUrl')}")
-                vacancy_payload = school.get("vacancy") or {}
-                vacancy = vacancy_payload.get("summary") or {}
-                vacancy_display_label = (vacancy.get("display") or vacancy_payload.get("display") or {}).get("label")
-                if vacancy_display_label or vacancy.get("dataMonth") or vacancy.get("lastSeenAt"):
-                    print(
-                        "  - 學額: "
-                        + f"{vacancy_display_label or '學位狀況更新中'} | dataMonth={vacancy.get('dataMonth') or 'N/A'} | "
-                          f"lastSeenAt={vacancy.get('lastSeenAt') or 'N/A'} | "
-                          f"confidence={vacancy.get('vacancies', [{}])[0].get('confidence') if vacancy.get('vacancies') else 'N/A'}"
-                    )
-                admission = (school.get("admission") or {}).get("summary") or {}
-                if admission.get("nextDeadline") or admission.get("noticeCount"):
-                    print(
-                        "  - 招生: "
-                        + f"nextDeadline={admission.get('nextDeadline')} | noticeCount={admission.get('noticeCount')} | "
-                          f"active={admission.get('activeNoticeCount')}"
-                    )
-
-        print(f"\n### 建議節奏")
-        for line in plan.get("timeline", []):
-            print(f"- {line}")
-
-        checklist = data.get("checklist") or []
-        if checklist:
-            print("\n### 核對清單")
-            for item in checklist:
-                print(f"- {item}")
-
-        reminders = data.get("reminders") or []
-        if reminders:
-            print("\n### 截止/跟進提醒")
-            for item in reminders[:20]:
-                line = f"- {item.get('school')}: {item.get('message')}"
-                if item.get("deadline"):
-                    line += f" (deadline={item.get('deadline')})"
-                print(line)
-        print_caveats(data)
-        return
-    if command == "marketplace-demo":
-        print("## SchoolFit Market Demo")
-        for item in data.get("examples", [])[:20]:
-            print(f"- prompt: `{item.get('prompt')}`")
-            print(f"  - command: `{item.get('command')}`")
-        print(f"\n### Command map")
-        for item in data.get("commandMap", []):
-            print(f"- {item.get('name')}: {item.get('description')}")
-        return
+    title = {
+        "advisor-search": "SchoolFit 智能選校簡報",
+        "shortlist-builder": "SchoolFit 短名單",
+        "school-relationships": "SchoolFit 升中銜接關係",
+        "vacancies": "SchoolFit 學額資料",
+        "admissions": "SchoolFit 招生通告",
+        "deep-compare": "SchoolFit 深度比較",
+        "decision-brief": "SchoolFit 單校決策摘要",
+        "school-report": "SchoolFit 學校報告",
+        "application-plan": "SchoolFit 申請計劃",
+    }.get(command, f"SchoolFit {command}")
+    print(f"## {title}\n")
+    if data.get("count") is not None:
+        print(f"共 {data.get('count')} 筆。")
+    schools = data.get("schools") or []
+    if schools:
+        print("\n### 學校")
+        for school in schools[:8]:
+            print(f"- {school.get('nameZh') or school.get('nameEn') or school.get('slug')}")
+            if school.get("schoolfitUrl"):
+                print(f"  - {school.get('schoolfitUrl')}")
+    for action in data.get("nextActions", [])[:6]:
+        print(f"- {action}")
+    print_caveats(data)
     print_json(data)
 
 
@@ -4434,7 +3922,7 @@ def print_caveats(data: Any = None) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Call the public SchoolFit API safely.")
-    parser.add_argument("--base-url", default=os.environ.get(BASE_OVERRIDE_ENV, DEFAULT_BASE_URL))
+    parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
     parser.add_argument("--skill-code", help="SchoolFit access code from https://schoolfit.hk/skill-code for this run.")
     parser.add_argument("--format", choices=["json", "markdown"], default="json")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -4520,12 +4008,6 @@ def build_parser() -> argparse.ArgumentParser:
     relationships.add_argument("--matched-only", action="store_true", help="Only show records linked to SchoolFit school detail pages.")
     relationships.add_argument("--page", type=int)
     relationships.add_argument("--page-size", type=int, default=24)
-
-    demo = sub.add_parser("marketplace-demo", help="Print high-quality output-ready examples for marketplaces.")
-    add_output_options(demo)
-
-    self_check = sub.add_parser("self-check", help="Run local package checks before release.")
-    add_output_options(self_check)
 
     metadata = sub.add_parser("metadata", help="Show public skill API metadata and capability status.")
     add_output_options(metadata)
@@ -4789,8 +4271,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     base_url = validate_base_url(args.base_url)
     command = args.command
     trace_id = next_trace_id()
-    # For explicit search without a user code, surface activation guidance and
-    # avoid a potentially noisy API probe on the public search entry point.
     use_client_code_fallback = command != "search-schools"
     skill_code = get_skill_code(args, allow_fallback=use_client_code_fallback)
     started_at = time.time()
@@ -4803,17 +4283,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     if command == "parse-parent-request":
         return parse_parent_request_text(getattr(args, "q", ""))
-
-    if command == "self-check":
-        return self_check_output()
-
-    if command == "marketplace-demo":
-        return attach_runtime_metadata(
-            compact_output(command, marketplace_demo_payload()),
-            activation_status="not_required",
-            trace_id=trace_id,
-            code=None,
-        )
 
     if command == "activate":
         pasted = getattr(args, "code", None) or getattr(args, "text", None)
@@ -5061,8 +4530,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
     elif command == "metadata":
         payload = api("GET", "/api/skill/metadata")
-    elif command == "marketplace-demo":
-        payload = marketplace_demo_payload()
     else:
         raise SchoolFitError(f"Unsupported command: {command}")
     output = attach_runtime_metadata(

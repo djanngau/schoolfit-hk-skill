@@ -5,7 +5,7 @@
 - Name: `SchoolFit`
 - Slug: `schoolfit`
 - Owner: `djanngau`
-- Version: `1.1.8`
+- Version: `1.1.11`
 - Repository: [github.com/djanngau/schoolfit-skill](https://github.com/djanngau/schoolfit-skill)
 - ClawHub listing: [clawhub.ai/djanngau/schoolfit](https://clawhub.ai/djanngau/schoolfit)
 - Primary marketplace: ClawHub
@@ -71,6 +71,8 @@ Agents should ask users to generate a SchoolFit access code at `https://schoolfi
 
 When a non-reserved code is used, the helper sends minimal usage telemetry to the SchoolFit service: command, endpoint, traceId, status/error, latency, activationStatus, skillVersion, and authorization-code hash prefix. It does not send the full code, student name, HKID, phone, address, report-card content, or raw parent query.
 
+Live school-search commands send the user's school preference text to `https://schoolfit.hk/api/...` for that request. Agents should disclose this before live queries and ask users to remove student names, HKID, phone numbers, addresses, report-card details, and private document contents.
+
 ## Security And Privacy Notes
 
 - Host allowlist is restricted to `schoolfit.hk`.
@@ -116,8 +118,7 @@ SchoolFit is designed to be discoverable for these ClawHub queries:
 ```bash
 python3 -m py_compile skills/schoolfit-hk/scripts/schoolfit_api.py
 python3 -m unittest discover -s tests
-python3 skills/schoolfit-hk/scripts/schoolfit_api.py self-check --format json
+python3 tools/schoolfit_release_check.py
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py quick-start --format json
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py parse-parent-request --q "九龍城 Band 1 女校 英文環境 唔要直資 想穩陣" --format markdown
-python3 skills/schoolfit-hk/scripts/schoolfit_api.py marketplace-demo --format json
 ```

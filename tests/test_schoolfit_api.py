@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest import mock
 from io import StringIO
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "skills" / "schoolfit-hk" / "scripts" / "schoolfit_api.py"
@@ -543,50 +543,18 @@ class SchoolFitApiTests(unittest.TestCase):
             schoolfit_api.run(args)
         self.assertEqual(request.call_args_list[-1].kwargs["skill_code"], "sfhk_after_subcommand")
 
-    def test_saved_skill_code_is_not_used_before_reserved_fallback(self):
-        with mock.patch.dict("os.environ", {"SCHOOLFIT_SKILL_CODE": "", "SCHOOLFIT_SKILL_API_CODE": ""}, clear=False):
-            self.assertEqual(schoolfit_api.resolve_skill_code(), schoolfit_api.SCHOOLFIT_SKILL_CLIENT_CODE)
-
-    def test_skill_code_precedence_prefers_cli_then_env_then_legacy(self):
-        with mock.patch.dict(
-            "os.environ",
-            {
-                "SCHOOLFIT_SKILL_CODE": "sfhk_env_code",
-                "SCHOOLFIT_SKILL_API_CODE": "sfhk_legacy_code",
-            },
-            clear=False,
-        ):
-            self.assertEqual(schoolfit_api.resolve_skill_code("sfhk_cli_code"), "sfhk_cli_code")
-            self.assertEqual(schoolfit_api.resolve_skill_code(), "sfhk_env_code")
-
-    def test_legacy_skill_api_code_is_used_after_env(self):
-        env = {
-            "SCHOOLFIT_SKILL_CODE": "",
-            "SCHOOLFIT_SKILL_API_CODE": "sfhk_legacy_code",
-        }
-        with mock.patch.dict("os.environ", env, clear=False):
-            self.assertEqual(schoolfit_api.resolve_skill_code(), "sfhk_legacy_code")
-
-    def test_reserved_fallback_when_no_code_is_configured(self):
-        env = {
-            "SCHOOLFIT_SKILL_CODE": "",
-            "SCHOOLFIT_SKILL_API_CODE": "",
-        }
-        with mock.patch.dict("os.environ", env, clear=False):
-            self.assertEqual(schoolfit_api.resolve_skill_code(), schoolfit_api.SCHOOLFIT_SKILL_CLIENT_CODE)
+    def test_skill_code_resolution_uses_cli_or_reserved_fallback_only(self):
+        self.assertEqual(schoolfit_api.resolve_skill_code("sfhk_cli_code"), "sfhk_cli_code")
+        self.assertEqual(schoolfit_api.resolve_skill_code(), schoolfit_api.SCHOOLFIT_SKILL_CLIENT_CODE)
+        self.assertIsNone(schoolfit_api.resolve_skill_code(None, allow_fallback=False))
 
     def test_activate_prefers_pasted_code_over_reserved_fallback(self):
         args = schoolfit_api.build_parser().parse_args([
             "activate",
             "我的 SchoolFit 授權碼是 sfhk_pasted_code_123456",
         ])
-        env = {
-            "SCHOOLFIT_SKILL_CODE": "",
-            "SCHOOLFIT_SKILL_API_CODE": "",
-        }
-        with mock.patch.dict("os.environ", env, clear=False):
-            with mock.patch.object(schoolfit_api, "request_json", return_value={"activationStatus": "active"}) as request:
-                output = schoolfit_api.run(args)
+        with mock.patch.object(schoolfit_api, "request_json", return_value={"activationStatus": "active"}) as request:
+            output = schoolfit_api.run(args)
         self.assertTrue(output["activated"])
         self.assertEqual(request.call_args.kwargs["skill_code"], "sfhk_pasted_code_123456")
         self.assertEqual(output["code"]["display"], "sfhk...3456")
@@ -1477,18 +1445,6 @@ class SchoolFitApiTests(unittest.TestCase):
                 for path, value in expected.items():
                     assert_path(output, path, value)
 
-    def test_marketplace_demo_declares_clawhub_first_distribution(self):
-        args = schoolfit_api.build_parser().parse_args([
-            "marketplace-demo",
-            "--format",
-            "json",
-        ])
-        output = schoolfit_api.run(args)
-        policy = output["distributionPolicy"]
-        self.assertEqual(policy["primaryMarketplace"], "ClawHub")
-        self.assertEqual(policy["fallbackOrder"], ["ClawHub", "skills.sh", "GitHub"])
-        self.assertIn("clawhub install schoolfit", policy["installCommands"])
-
     def test_school_levels_is_public_and_lists_all_databases(self):
         args = schoolfit_api.build_parser().parse_args([
             "school-levels",
@@ -2375,20 +2331,13 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertEqual(schoolfit_api.resolve_school_query("LSC"), "La Salle College")
         self.assertEqual(schoolfit_api.resolve_school_query("WYHK"), "Wah Yan College Hong Kong")
 
-    def test_self_check_is_public_and_ok(self):
-        args = schoolfit_api.build_parser().parse_args(["self-check"])
-        with mock.patch.object(schoolfit_api, "request_json") as request:
-            output = schoolfit_api.run(args)
-        self.assertFalse(request.called)
-        self.assertTrue(output["ok"])
-        self.assertEqual(output["skillVersion"], schoolfit_api.SKILL_VERSION)
-        check_names = {check["name"] for check in output["checks"]}
-        self.assertIn("version_current", check_names)
-        self.assertIn("clawhub_slug_current", check_names)
-        self.assertIn("brand_current", check_names)
-        self.assertIn("metadata_session_code_only", check_names)
-        self.assertIn("no_legacy_install_path", check_names)
-        self.assertIn("audit_doc_present", check_names)
+    def test_maintenance_commands_are_not_packaged_runtime_commands(self):
+        parser = schoolfit_api.build_parser()
+        with redirect_stderr(StringIO()):
+            with self.assertRaises(SystemExit):
+                parser.parse_args(["self-check"])
+            with self.assertRaises(SystemExit):
+                parser.parse_args(["marketplace-demo"])
 
     def test_llm_brief_allows_traditional_simplified_and_english_answers(self):
         brief = schoolfit_api.standard_llm_brief("demo", "purpose", [])

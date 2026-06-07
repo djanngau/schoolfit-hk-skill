@@ -1,6 +1,6 @@
 # SchoolFit
 
-Version: `1.1.8`
+Version: `1.1.11`
 
 SchoolFit is an evidence-first Hong Kong school admissions and school selection skill for agent platforms. It helps OpenClaw, ArkAgent, Claude Code, and compatible agents answer secondary school, primary school, kindergarten, international school, and postsecondary family questions with bounded data access, conservative ranking, and clear source separation.
 
@@ -61,7 +61,8 @@ Before the first live query, disclose the usage boundary:
 - The code is a trial session access code for SchoolFit API use, not a school account login or student identity.
 - The helper sends only minimal usage telemetry for non-reserved codes: command, endpoint, traceId, status/error, latency, activationStatus, skillVersion, and authorization-code hash prefix.
 - Telemetry does not include the full authorization code, student name, HKID, phone, address, report-card content, or raw parent query.
-- The code must stay in active chat context or an explicit runtime environment variable. It must not be written to files, logs, examples, commits, marketplace listings, or final answers.
+- The code must stay in active chat context or the current helper invocation. It must not be written to files, logs, examples, commits, marketplace listings, or final answers.
+- Live commands with `--q` send school-search preference text to `https://schoolfit.hk/api/...` for that request. Remove student names, HKID, phone numbers, addresses, report-card details, and private document contents first.
 
 Always show the authorization page as exactly `https://schoolfit.hk/skill-code`. If a copied link contains query strings, hash fragments, tracking parameters, or any suffix after `/skill-code`, normalize it back to the canonical URL.
 
@@ -85,6 +86,7 @@ SchoolFit is intentionally narrow.
 
 - Calls only `https://schoolfit.hk/api/...`.
 - Rejects non-`schoolfit.hk` base URLs, custom schemes, embedded user-info, custom ports, and non-API paths.
+- Does not read runtime environment variables or local package files in the published runtime helper.
 - Does not read local Edu databases, Prisma files, SQLite files, raw data snapshots, cookies, `.env` files, or private project keys.
 - Does not call `/api/agent/chat` in v1, avoiding LLM usage and persistent session creation.
 - Blocks obvious HKID, phone, and email input before API calls and asks the user to remove personal identifiers.
@@ -141,7 +143,7 @@ Run these before publishing a new ClawHub version:
 ```bash
 python3 -m py_compile skills/schoolfit-hk/scripts/schoolfit_api.py
 python3 -m unittest discover -s tests
-python3 skills/schoolfit-hk/scripts/schoolfit_api.py self-check --format json
+python3 tools/schoolfit_release_check.py
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py quick-start --format json
 git diff --check
 ```
