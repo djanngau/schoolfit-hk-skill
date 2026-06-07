@@ -2382,7 +2382,13 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertFalse(request.called)
         self.assertTrue(output["ok"])
         self.assertEqual(output["skillVersion"], schoolfit_api.SKILL_VERSION)
-        self.assertIn("version_current", {check["name"] for check in output["checks"]})
+        check_names = {check["name"] for check in output["checks"]}
+        self.assertIn("version_current", check_names)
+        self.assertIn("clawhub_slug_current", check_names)
+        self.assertIn("brand_current", check_names)
+        self.assertIn("metadata_session_code_only", check_names)
+        self.assertIn("no_legacy_install_path", check_names)
+        self.assertIn("audit_doc_present", check_names)
 
     def test_llm_brief_allows_traditional_simplified_and_english_answers(self):
         brief = schoolfit_api.standard_llm_brief("demo", "purpose", [])

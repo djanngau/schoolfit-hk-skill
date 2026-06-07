@@ -1,8 +1,8 @@
 # SchoolFit
 
-Version: `1.1.5`
+Version: `1.1.6`
 
-SchoolFit is an evidence-first school-selection skill for agent platforms. It helps OpenClaw, ArkAgent, Claude Code, and compatible agents answer Hong Kong family school questions with bounded data access, conservative ranking, and clear source separation.
+SchoolFit is an evidence-first Hong Kong school admissions and school selection skill for agent platforms. It helps OpenClaw, ArkAgent, Claude Code, and compatible agents answer secondary school, primary school, kindergarten, international school, and postsecondary family questions with bounded data access, conservative ranking, and clear source separation.
 
 The skill is designed for real parent conversations, not database dumping. It turns natural-language questions into structured school searches, comparison briefs, shortlists, application plans, vacancy checks, and admissions follow-ups while keeping official facts, non-official Band references, time-sensitive notices, and assumptions visibly separate.
 
@@ -15,7 +15,7 @@ The skill is designed for real parent conversations, not database dumping. It tu
 - Compares up to four schools and explains practical differences, risks, and next steps.
 - Produces compact single-school decision briefs and application plans.
 - Checks EDB vacancy records, admissions notices, and primary-secondary relationship data when available.
-- Refuses off-topic, model-probing, prompt/API-key, jailbreak, and deliberate token-wasting requests before making SchoolFit or model calls.
+- Refuses off-topic, model-probing, secret-extraction, jailbreak, and deliberate token-wasting requests before making SchoolFit or model calls.
 
 ## Coverage
 
@@ -50,15 +50,15 @@ npx skills add djanngau/schoolfit-skill
 
 ## First Use
 
-After installation, the agent should ask the family to create a SchoolFit authorization code:
+After installation, the agent should ask the family to create a SchoolFit session access code:
 
 ```text
-請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit 授權碼，複製後只發到這個你信任的一對一聊天窗口。授權碼屬於敏感會話材料，不要貼到公開或多人聊天，也不要截圖外傳或寫入日誌。完整授權碼不會出現在最終回答。
+請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit 授權碼，複製後只發到這個你信任的一對一聊天窗口。這是敏感的 SchoolFit session access code，不要貼到公開或多人聊天，也不要截圖外傳或寫入日誌。完整授權碼不會出現在最終回答。
 ```
 
 Before the first live query, disclose the usage boundary:
 
-- The code is a trial authorization and telemetry key, not a password, payment token, or student identity.
+- The code is a trial session access code for SchoolFit API use, not a login password or student identity.
 - The helper sends only minimal usage telemetry for non-reserved codes: command, endpoint, traceId, status/error, latency, activationStatus, skillVersion, and authorization-code hash prefix.
 - Telemetry does not include the full authorization code, student name, HKID, phone, address, report-card content, or raw parent query.
 - The code must stay in active chat context or an explicit runtime environment variable. It must not be written to files, logs, examples, commits, marketplace submissions, or final answers.
@@ -84,8 +84,8 @@ SchoolFit responses are optimized for downstream AI models through `llmBrief.age
 SchoolFit is intentionally narrow.
 
 - Calls only `https://schoolfit.hk/api/...`.
-- Rejects non-`schoolfit.hk` base URLs, custom schemes, credentials, custom ports, and non-API paths.
-- Does not read local Edu databases, Prisma files, SQLite files, raw data snapshots, cookies, `.env` files, or private API keys.
+- Rejects non-`schoolfit.hk` base URLs, custom schemes, embedded user-info, custom ports, and non-API paths.
+- Does not read local Edu databases, Prisma files, SQLite files, raw data snapshots, cookies, `.env` files, or private project keys.
 - Does not call `/api/agent/chat` in v1, avoiding LLM cost and persistent session creation.
 - Blocks obvious HKID, phone, and email input before API calls and asks the user to remove sensitive data.
 - Does not persist authorization codes locally. The deprecated `setup-code` command validates a code for the current run only and returns `stored: false`.
@@ -101,12 +101,23 @@ The public SchoolFit API treats the live SchoolFit database as the canonical run
 - Full source JSON files are ingest, seed, and audit inputs only. This skill must not read or cite them as runtime facts.
 - Redis, if introduced later, should remain optional cache, rate-limit, or queue infrastructure, not a primary data source.
 
+## ClawHub Search Examples
+
+SchoolFit is intended to match searches such as:
+
+- `Hong Kong school admissions`
+- `Hong Kong school selection`
+- `secondary school admissions Hong Kong`
+- `primary school search Hong Kong`
+- `kindergarten admissions Hong Kong`
+- `international school Hong Kong IB A-Level`
+
 ## CLI Examples
 
 These commands are for agents, maintainers, and release testing. Families should only need to paste the `sfhk_...` code in chat.
 
 ```bash
-export SCHOOLFIT_SKILL_CODE="PASTE_CODE_FROM_https://schoolfit.hk/skill-code"
+export SCHOOLFIT_SKILL_CODE="PASTE_SESSION_ACCESS_CODE_FROM_https://schoolfit.hk/skill-code"
 
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py quick-start --format markdown
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py school-levels --format markdown
@@ -144,3 +155,4 @@ Current distribution:
 - GitHub repository: [github.com/djanngau/schoolfit-skill](https://github.com/djanngau/schoolfit-skill)
 - Primary marketplace: ClawHub
 - Fallback discovery: skills.sh, then GitHub direct install
+- Audit note: see [skills/schoolfit-hk/AUDIT.md](skills/schoolfit-hk/AUDIT.md)

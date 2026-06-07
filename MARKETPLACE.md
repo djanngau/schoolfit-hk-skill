@@ -5,24 +5,24 @@
 - Name: `SchoolFit`
 - Slug: `schoolfit`
 - Owner: `djanngau`
-- Version: `1.1.5`
+- Version: `1.1.6`
 - Repository: [github.com/djanngau/schoolfit-skill](https://github.com/djanngau/schoolfit-skill)
 - ClawHub listing: [clawhub.ai/djanngau/schoolfit](https://clawhub.ai/djanngau/schoolfit)
 - Primary marketplace: ClawHub
 
 ## Positioning
 
-SchoolFit is an evidence-first school-selection skill for Hong Kong families. It gives agents a bounded, source-conscious way to search schools, compare options, build shortlists, check vacancies and admissions, and turn parent preferences into practical next steps.
+SchoolFit is an evidence-first Hong Kong school admissions and school selection skill for families. It gives agents a bounded, source-conscious way to search secondary schools, primary schools, kindergartens, international schools, and postsecondary options, compare choices, check vacancies and admissions, and turn parent preferences into practical next steps.
 
 SchoolFit is not a generic web search wrapper. It is a purpose-built school advisory interface over the public SchoolFit API, with explicit privacy limits, conservative source labeling, and a parent-facing response contract.
 
 ## Short Description
 
-Search, compare, shortlist, and plan Hong Kong school applications across secondary, primary, kindergarten, international, and postsecondary SchoolFit data, with clear separation of official facts, non-official Band references, vacancies, admissions, and assumptions.
+Search, compare, shortlist, and plan Hong Kong school admissions across secondary school, primary school, kindergarten, international school, and postsecondary SchoolFit data, with clear separation of official facts, non-official Band references, vacancies, admissions, and assumptions.
 
 ## Long Description
 
-SchoolFit helps OpenClaw, ArkAgent, Claude Code, and compatible agents support families making real Hong Kong school decisions. The skill understands natural parent prompts, narrows them into safe query filters, searches the public SchoolFit API, resolves fuzzy school names and acronyms, compares schools, builds shortlists, generates single-school decision briefs, checks vacancy and admission signals, and returns an `llmBrief.agentHandoff` contract for polished final answers.
+SchoolFit helps OpenClaw, ArkAgent, Claude Code, and compatible agents support families making real Hong Kong school decisions. The skill understands natural parent prompts such as "Hong Kong school admissions", "school selection", "secondary school", "primary school", "kindergarten", and "international school", narrows them into safe query filters, searches the public SchoolFit API, resolves fuzzy school names and acronyms, compares schools, builds shortlists, generates single-school decision briefs, checks vacancy and admission signals, and returns an `llmBrief.agentHandoff` contract for polished final answers.
 
 The output model is intentionally conservative. Official school facts, school-official notices, non-official Band references, vacancy records, community-style signals, and assumptions must remain visibly separate. Vacancy and admissions data are treated as time-sensitive leads, not guarantees. Agents are instructed to verify high-freshness facts only against official school or notice URLs returned in the current SchoolFit payload.
 
@@ -67,18 +67,18 @@ ark skill install djanngau/schoolfit-skill#skills/schoolfit-hk
 
 ## First-Run User Disclosure
 
-Agents should ask users to generate a code at `https://schoolfit.hk/skill-code` and paste it only into a trusted one-to-one agent chat. The code is sensitive session material and should not be posted in public or multi-user chats, screenshots, logs, issues, examples, commits, or marketplace submissions.
+Agents should ask users to generate a SchoolFit session access code at `https://schoolfit.hk/skill-code` and paste it only into a trusted one-to-one agent chat. The code is sensitive session material and should not be posted in public or multi-user chats, screenshots, logs, issues, examples, commits, or marketplace submissions.
 
 When a non-reserved code is used, the helper sends minimal usage telemetry to the SchoolFit service: command, endpoint, traceId, status/error, latency, activationStatus, skillVersion, and authorization-code hash prefix. It does not send the full code, student name, HKID, phone, address, report-card content, or raw parent query.
 
 ## Security And Privacy Notes
 
 - Host allowlist is restricted to `schoolfit.hk`.
-- The helper rejects custom schemes, credentials, custom ports, and non-API paths.
+- The helper rejects custom schemes, embedded user-info, custom ports, and non-API paths.
 - The skill calls only `https://schoolfit.hk/api/...`.
 - The skill does not read local databases, Prisma schemas, SQLite files, `.env` files, cookies, private project snapshots, or raw school data dumps.
 - The skill does not call `/api/agent/chat` in v1.
-- Authorization codes are not persisted locally. The deprecated `setup-code` command validates a code for the current run only and returns `stored: false`.
+- Session access codes are not persisted locally. The deprecated `setup-code` command validates a code for the current run only and returns `stored: false`.
 - Parent-facing final answers never echo the full `sfhk_...` code. Debug surfaces use only hash prefixes.
 - Obvious HKID, personal phone, email, address, full student name, and document-content inputs are blocked before API calls.
 
@@ -96,8 +96,20 @@ When a non-reserved code is used, the helper sends minimal usage telemetry to th
 ## Tags
 
 ```text
-education, hong-kong, school-selection, secondary-school, primary-school, kindergarten, international-school, postsecondary, admissions, vacancies, schoolfit, openclaw, arkagent, claude-code
+education, school, schools, hong-kong, hong-kong-schools, school-selection, school-choice, school-search, school-admissions, secondary-school, primary-school, kindergarten, international-school, postsecondary, admissions, vacancies, edb, jupas, ib, dss, emi, cmi, schoolfit, openclaw, arkagent, claude-code
 ```
+
+## Search Phrases
+
+SchoolFit is designed to be discoverable for these ClawHub queries:
+
+- Hong Kong school admissions
+- Hong Kong school selection
+- secondary school admissions Hong Kong
+- primary school search Hong Kong
+- kindergarten admissions Hong Kong
+- international school Hong Kong IB A-Level
+- JUPAS postsecondary Hong Kong
 
 ## Smoke Test
 
