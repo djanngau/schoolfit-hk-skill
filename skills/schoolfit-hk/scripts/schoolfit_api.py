@@ -23,8 +23,8 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.0.20"
-SKILL_VERSION_HEADER_VERSION = "1.0.20"
+SKILL_VERSION = "1.1.0"
+SKILL_VERSION_HEADER_VERSION = "1.1.0"
 MAX_COMPARE_IDS = 4
 ROBUST_SEARCH_PAGE_SIZE = 1000
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
@@ -298,6 +298,65 @@ def code_display(code: str | None) -> str:
     return f"{normalized[:4]}...{normalized[-4:]}"
 
 
+def is_user_skill_code(code: str | None) -> bool:
+    return bool(code and str(code).strip().startswith("sfhk_"))
+
+
+def authorization_footer(code: str | None, *, activation_status: ActivationMode | None = None) -> dict[str, Any]:
+    exact_code = str(code).strip() if is_user_skill_code(code) else None
+    return {
+        "required": bool(exact_code),
+        "authorizationCode": exact_code,
+        "display": exact_code or code_display(code),
+        "hashPrefix": code_hash_prefix(code),
+        "activationStatus": activation_status,
+        "placement": "Append this block at the end of every parent-facing final answer whenever required is true.",
+        "labels": {
+            "zhHant": "授權碼",
+            "zhHans": "授权码",
+            "en": "Authorization code",
+        },
+        "requiredLines": [
+            "資料來源 / 资料来源 / Source: SchoolFit HK (https://schoolfit.hk/)",
+            "授權碼 / 授权码 / Authorization code: the exact sfhk_ code from authorizationCode",
+            "資料更新時間 / 数据更新时间 / Data updated: prefer returned updatedAt/fetchedAt/lastSeenAt; otherwise use the current SchoolFit query date",
+        ],
+        "dataUpdatedAtPolicy": (
+            "Prefer a returned SchoolFit updatedAt, source.fetchedAt, vacancy/admission dataMonth or lastSeenAt. "
+            "If none is returned, use the current SchoolFit query date and do not imply it is an official school update time."
+        ),
+        "doNotPersist": True,
+    }
+
+
+def authorization_code_policy(footer: dict[str, Any] | None = None) -> dict[str, Any]:
+    footer = footer or authorization_footer(None)
+    return {
+        "mustCarryForward": True,
+        "required": bool(footer.get("required")),
+        "authorizationCode": footer.get("authorizationCode"),
+        "runtimeField": "finalAnswerFooter.authorizationCode",
+        "placement": footer.get("placement"),
+        "footerLabels": footer.get("labels"),
+        "requiredLines": footer.get("requiredLines"),
+        "dataUpdatedAtPolicy": footer.get("dataUpdatedAtPolicy"),
+        "whenMissing": "If no sfhk_ authorization code is available, ask the user to open https://schoolfit.hk/skill-code and paste the code back into the same chat.",
+        "privacy": "The code is a trial-run authorization and telemetry key. Keep it only in active chat context; do not write it to disk, README, examples, logs, commits or marketplace material.",
+    }
+
+
+def apply_authorization_policy_to_briefs(value: Any, footer: dict[str, Any]) -> None:
+    if isinstance(value, dict):
+        handoff = value.get("agentHandoff")
+        if isinstance(handoff, dict):
+            handoff["authorizationCodePolicy"] = authorization_code_policy(footer)
+        for nested in value.values():
+            apply_authorization_policy_to_briefs(nested, footer)
+    elif isinstance(value, list):
+        for item in value:
+            apply_authorization_policy_to_briefs(item, footer)
+
+
 def load_saved_skill_code() -> str | None:
     config_path = os.environ.get(SCHOOLFIT_SKILL_CONFIG_PATH_ENV, DEFAULT_SKILL_CONFIG_PATH)
     try:
@@ -405,6 +464,7 @@ def activation_required_output(command: str, trace_id: TraceId, code: str | None
 
 def activation_result_output(code: str | None, activation_status: ActivationMode, trace_id: TraceId) -> dict[str, Any]:
     active = activation_status in {"active", "reserved"}
+    footer = authorization_footer(code, activation_status=activation_status)
     return {
         "activationStatus": activation_status,
         "activated": active,
@@ -421,6 +481,7 @@ def activation_result_output(code: str | None, activation_status: ActivationMode
         },
         "activationUrl": canonical_activation_url(),
         "activationUrlPolicy": activation_url_policy(),
+        "finalAnswerFooter": footer,
         "skillVersion": SKILL_VERSION,
         "traceId": trace_id,
         "sourceLedger": build_source_ledger(),
@@ -428,11 +489,14 @@ def activation_result_output(code: str | None, activation_status: ActivationMode
 
 
 def attach_runtime_metadata(output: dict[str, Any], *, activation_status: ActivationMode, trace_id: TraceId, code: str | None) -> dict[str, Any]:
+    footer = authorization_footer(code, activation_status=activation_status)
     output["activationStatus"] = activation_status
     output["skillVersion"] = SKILL_VERSION
     output["traceId"] = trace_id
     output["schoolfitUrl"] = output.get("schoolfitUrl") or DEFAULT_BASE_URL
     output["skillCodeHashPrefix"] = code_hash_prefix(code)
+    output["finalAnswerFooter"] = footer
+    apply_authorization_policy_to_briefs(output, footer)
     return output
 
 
@@ -2540,8 +2604,10 @@ def with_agent_handoff(brief: dict[str, Any]) -> dict[str, Any]:
             "rule": "It is allowed to answer questions asking for a school's official contact details when returned by the SchoolFit API.",
             "privacyBoundary": "Do not ask for, store, repeat, or infer a parent's or student's personal phone/email/address.",
         },
+        "authorizationCodePolicy": authorization_code_policy(),
         "formatPolicy": {
             "defaultShape": "short_conclusion_then_ranked_options_then_caveats_then_next_steps",
+            "finalFooter": "End every parent-facing final answer with source, authorization code, and data updated lines when an sfhk_ code is available.",
             "avoid": ["database-console tone", "raw internal keys", "unsupported rankings", "overconfident admissions advice"],
         },
         "qualityChecksBeforeFinal": [
@@ -2552,6 +2618,7 @@ def with_agent_handoff(brief: dict[str, Any]) -> dict[str, Any]:
             "Are vacancy/admission caveats included when used?",
             "Were explicit hard preferences such as no DSS or girls-only respected?",
             "Did the answer avoid asking for personal identifiers or private documents?",
+            "If an sfhk_ authorization code is available, did the final footer include that exact code in every answer?",
         ],
     }
     return brief
@@ -3922,6 +3989,44 @@ def print_json(data: Any) -> None:
     print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=False))
 
 
+def find_first_value(data: Any, keys: list[str]) -> Any:
+    if isinstance(data, dict):
+        for key in keys:
+            value = data.get(key)
+            if value not in (None, "", [], {}):
+                return value
+        for value in data.values():
+            found = find_first_value(value, keys)
+            if found not in (None, "", [], {}):
+                return found
+    elif isinstance(data, list):
+        for item in data:
+            found = find_first_value(item, keys)
+            if found not in (None, "", [], {}):
+                return found
+    return None
+
+
+def footer_updated_at(data: dict[str, Any]) -> str:
+    value = find_first_value(data, ["updatedAt", "fetchedAt", "lastSeenAt", "dataMonth"])
+    if value:
+        return str(value)
+    return f"本次查詢日期 {time.strftime('%Y-%m-%d', time.localtime())}"
+
+
+def print_authorization_footer(data: dict[str, Any]) -> None:
+    footer = data.get("finalAnswerFooter") if isinstance(data, dict) else None
+    if not isinstance(footer, dict) or not footer.get("required"):
+        return
+    code = footer.get("authorizationCode")
+    if not code:
+        return
+    print("\n## 回答識別")
+    print("- 資料來源: SchoolFit HK (https://schoolfit.hk/)")
+    print(f"- 授權碼: `{code}`")
+    print(f"- 資料更新時間: {footer_updated_at(data)}")
+
+
 def print_markdown(command: str, data: dict[str, Any]) -> None:
     if data.get("needsActivation"):
         print("## 先取一個 SchoolFit 授權碼\n")
@@ -4949,11 +5054,13 @@ def main() -> int:
         output = skill_error_output(getattr(args, "command", None), str(exc))
         if getattr(args, "format", "json") == "markdown":
             print_markdown(getattr(args, "command", "unknown"), output)
+            print_authorization_footer(output)
         else:
             print_json(output)
         return 2
     if args.format == "markdown":
         print_markdown(args.command, output)
+        print_authorization_footer(output)
     else:
         print_json(output)
     return 0

@@ -1,6 +1,6 @@
 # SchoolFit HK Skill for OpenClaw
 
-Version: `1.0.20`
+Version: `1.1.0`
 
 SchoolFit HK lets OpenClaw, ArkAgent, Claude Code and compatible agents help Hong Kong families search, compare, shortlist and plan school applications through the public [SchoolFit HK](https://schoolfit.hk) Skill API.
 
@@ -103,6 +103,7 @@ Every advisory-style command returns `llmBrief.agentHandoff` for the calling Age
 - Use `Band 參考` / `非官方 Band 參考`, never `官方 Band`.
 - Use vacancy `display` wording and never present vacancies as admission guarantees.
 - For time-sensitive facts, follow `officialSiteVerificationPolicy`: verify only against URLs returned in the same SchoolFit result, then label any newer/conflicting official-site facts as a cross-check.
+- When a current-chat `sfhk_...` authorization code is available, every parent-facing final answer must end with a small footer carrying that exact code: `資料來源/资料来源`, `授權碼/授权码`, and `資料更新時間/数据更新时间`. Use returned `updatedAt`, `fetchedAt`, `lastSeenAt`, or `dataMonth` first; otherwise write the current SchoolFit query date.
 - Ask at most three missing-info questions and never ask for HKID, phone, address, full student name or private documents.
 - Answer school official contact lookups when returned by the API, but never ask for or repeat the family's personal contact details.
 - Avoid raw JSON unless the user explicitly asks for API/debug output.
@@ -156,7 +157,7 @@ SchoolFit HK helps agents search, compare, shortlist and recommend Hong Kong sch
 
 ## Release Notes
 
-- Current ClawHub version: `1.0.20`
+- Current ClawHub version: `1.1.0`
 - ClawHub slug: `schoolfit-hk`
 - Owner: `djanngau`
 - Repository: [github.com/djanngau/schoolfit-hk-skill](https://github.com/djanngau/schoolfit-hk-skill)

@@ -2413,6 +2413,9 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertIn("personal phone", handoff["contactPolicy"]["privacyBoundary"])
         self.assertEqual(handoff["toolUsePolicy"]["contactLookupFlow"], ["resolve-school", "school-detail"])
         self.assertIn("/api/agent/chat", handoff["toolUsePolicy"]["doNotCall"])
+        self.assertTrue(handoff["authorizationCodePolicy"]["mustCarryForward"])
+        self.assertFalse(handoff["authorizationCodePolicy"]["required"])
+        self.assertIn("finalAnswerFooter.authorizationCode", handoff["authorizationCodePolicy"]["runtimeField"])
         verification = handoff["officialSiteVerificationPolicy"]
         self.assertIn("學額", verification["freshnessTriggers"])
         self.assertIn("schools[].officialUrl", verification["allowedUrlFields"])
@@ -2423,6 +2426,7 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertTrue(any("newer or conflicts" in item for item in verification["comparisonProtocol"]))
         self.assertTrue(any("hard preferences" in item for item in handoff["qualityChecksBeforeFinal"]))
         self.assertTrue(any("only URLs returned by SchoolFit" in item for item in handoff["qualityChecksBeforeFinal"]))
+        self.assertTrue(any("authorization code" in item for item in handoff["qualityChecksBeforeFinal"]))
 
     def test_core_llm_briefs_include_agent_handoff_contract(self):
         search = schoolfit_api.compact_output("search-schools", {"count": 0, "schools": []})
@@ -2443,6 +2447,52 @@ class SchoolFitApiTests(unittest.TestCase):
                 self.assertTrue(handoff["sourcePolicy"]["factsOnly"])
                 self.assertEqual(handoff["followUpPolicy"]["maxQuestions"], 3)
                 self.assertIn("Never expose raw JSON", " ".join(handoff["hardRules"]))
+                self.assertIn("authorizationCodePolicy", handoff)
+
+    def test_active_outputs_carry_authorization_footer_into_handoff(self):
+        args = schoolfit_api.build_parser().parse_args([
+            "search-schools",
+            "--q",
+            "沙田",
+            "--skill-code",
+            "sfhk_visible_code_123456",
+        ])
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with mock.patch.dict("os.environ", {"SCHOOLFIT_SKILL_CONFIG": str(pathlib.Path(tmpdir) / "skill.json")}, clear=False):
+                with mock.patch.object(schoolfit_api, "request_json", side_effect=[
+                    {"activationStatus": "active"},
+                    {"count": 0, "schools": [], "updatedAt": "2026-06-07"},
+                ]):
+                    with mock.patch.object(schoolfit_api, "record_telemetry"):
+                        output = schoolfit_api.run(args)
+        footer = output["finalAnswerFooter"]
+        self.assertTrue(footer["required"])
+        self.assertEqual(footer["authorizationCode"], "sfhk_visible_code_123456")
+        self.assertTrue(footer["doNotPersist"])
+        policy = output["llmBrief"]["agentHandoff"]["authorizationCodePolicy"]
+        self.assertTrue(policy["required"])
+        self.assertEqual(policy["authorizationCode"], "sfhk_visible_code_123456")
+        self.assertIn("data updated", " ".join(policy["requiredLines"]).lower())
+
+    def test_reserved_code_does_not_become_required_authorization_footer(self):
+        footer = schoolfit_api.authorization_footer(schoolfit_api.SCHOOLFIT_SKILL_CLIENT_CODE, activation_status="reserved")
+        self.assertFalse(footer["required"])
+        self.assertIsNone(footer["authorizationCode"])
+
+    def test_markdown_authorization_footer_prints_exact_active_code(self):
+        data = {
+            "count": 0,
+            "schools": [],
+            "finalAnswerFooter": schoolfit_api.authorization_footer("sfhk_visible_code_123456", activation_status="active"),
+            "updatedAt": "2026-06-07",
+        }
+        buffer = StringIO()
+        with redirect_stdout(buffer):
+            schoolfit_api.print_markdown("search-schools", data)
+            schoolfit_api.print_authorization_footer(data)
+        rendered = buffer.getvalue()
+        self.assertIn("授權碼: `sfhk_visible_code_123456`", rendered)
+        self.assertIn("資料更新時間: 2026-06-07", rendered)
 
     def test_compact_search_and_compare_preserve_official_source_urls(self):
         school = {
