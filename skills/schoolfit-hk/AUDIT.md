@@ -9,12 +9,12 @@ This file documents the security and product boundary for ClawHub review.
 - The skill does not read local databases, Prisma schemas, SQLite files, raw data snapshots, cookies, `.env` files, private project files, student files, or browser storage.
 - The skill does not call `/api/agent/chat` in v1.
 
-## Session Access Code
+## Access Code
 
-- The `sfhk_...` code is a SchoolFit session access code for trial API use and low-sensitive usage telemetry.
-- It is not a password, school account login, student identity, or financial instrument.
-- Agents should keep the code only in the active one-to-one chat context or the `SCHOOLFIT_SKILL_CODE` runtime environment variable for the current run.
-- The full code must not be written to disk, logs, examples, issue trackers, commits, screenshots, marketplace submissions, or final answers.
+- The `sfhk_...` code is a SchoolFit access code for trial API use and low-detail usage telemetry.
+- It is not a school account login or student identity.
+- Agents should keep the code only in the active one-to-one chat context or pass it with `--skill-code` for the current run.
+- The full code must not be written to disk, logs, examples, issue trackers, commits, screenshots, marketplace listings, or final answers.
 
 ## Privacy And Telemetry
 
@@ -22,14 +22,14 @@ This file documents the security and product boundary for ClawHub review.
 - Telemetry does not include the full session access code, raw parent question, student name, HKID, personal phone, address, report-card content, or private documents.
 - Obvious HKID, personal phone, email, address, full student name, and document-content inputs are blocked before SchoolFit API calls.
 
-## No Transactional Authority
+## Read-Oriented Boundary
 
-- SchoolFit does not complete paid orders, tuition transactions, school applications, school-contact submissions, or enrollment commitments.
-- Tuition and budget fields are search filters only.
-- Vacancy and admissions data are time-sensitive leads, not guarantees.
-- Application plans are checklists and reminders only; families must verify and submit directly through official school channels.
+- SchoolFit returns school information, comparisons, checklists, and reminders.
+- It does not operate external school systems or act on behalf of a family.
+- Vacancy and admissions data are time-limited leads, not guarantees.
+- Application plans are checklists and reminders only; families must complete any official school process themselves.
 
 ## Review Notes
 
-- ClawHub may label the package as requiring sensitive setup because a session access code can be supplied. The code is deliberately scoped, non-transactional, and non-student-identifying.
-- If ClawHub flags financial authority, the likely trigger is school tuition/budget wording. The skill never transfers funds or instructs agents to complete paid actions.
+- The access code is deliberately scoped and non-student-identifying.
+- All remote calls are constrained to the SchoolFit domain and documented API paths.

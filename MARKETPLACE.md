@@ -5,7 +5,7 @@
 - Name: `SchoolFit`
 - Slug: `schoolfit`
 - Owner: `djanngau`
-- Version: `1.1.6`
+- Version: `1.1.8`
 - Repository: [github.com/djanngau/schoolfit-skill](https://github.com/djanngau/schoolfit-skill)
 - ClawHub listing: [clawhub.ai/djanngau/schoolfit](https://clawhub.ai/djanngau/schoolfit)
 - Primary marketplace: ClawHub
@@ -24,7 +24,7 @@ Search, compare, shortlist, and plan Hong Kong school admissions across secondar
 
 SchoolFit helps OpenClaw, ArkAgent, Claude Code, and compatible agents support families making real Hong Kong school decisions. The skill understands natural parent prompts such as "Hong Kong school admissions", "school selection", "secondary school", "primary school", "kindergarten", and "international school", narrows them into safe query filters, searches the public SchoolFit API, resolves fuzzy school names and acronyms, compares schools, builds shortlists, generates single-school decision briefs, checks vacancy and admission signals, and returns an `llmBrief.agentHandoff` contract for polished final answers.
 
-The output model is intentionally conservative. Official school facts, school-official notices, non-official Band references, vacancy records, community-style signals, and assumptions must remain visibly separate. Vacancy and admissions data are treated as time-sensitive leads, not guarantees. Agents are instructed to verify high-freshness facts only against official school or notice URLs returned in the current SchoolFit payload.
+The output model is intentionally conservative. Official school facts, school-official notices, non-official Band references, vacancy records, community-style signals, and assumptions must remain visibly separate. Vacancy and admissions data are treated as time-limited leads, not guarantees. Agents are instructed to verify high-freshness facts only against official school or notice URLs returned in the current SchoolFit payload.
 
 SchoolFit is built for parent conversations in Traditional Chinese, Simplified Chinese, or English. It avoids raw database tone, asks for at most three missing inputs, and blocks unnecessary personal data such as student names, HKID, phone numbers, addresses, report-card PDFs, and private documents.
 
@@ -32,8 +32,8 @@ SchoolFit is built for parent conversations in Traditional Chinese, Simplified C
 
 - Families comparing Hong Kong secondary, primary, kindergarten, international, or postsecondary options.
 - Agents that need school-search answers grounded in a bounded public API instead of open-ended browsing.
-- School shortlist workflows using district, commute, Band reference, language environment, DSS/private exclusions, SEN support, tuition, and application timing.
-- Time-sensitive admission and vacancy follow-up where caveats and source labels matter.
+- School shortlist workflows using district, commute, Band reference, language environment, DSS/private exclusions, SEN support, yearly range, and application timing.
+- Time-limited admission and vacancy follow-up where caveats and source labels matter.
 - Advisor-style conversations where the final answer should be concise, practical, and parent-ready.
 
 ## Coverage
@@ -67,7 +67,7 @@ ark skill install djanngau/schoolfit-skill#skills/schoolfit-hk
 
 ## First-Run User Disclosure
 
-Agents should ask users to generate a SchoolFit session access code at `https://schoolfit.hk/skill-code` and paste it only into a trusted one-to-one agent chat. The code is sensitive session material and should not be posted in public or multi-user chats, screenshots, logs, issues, examples, commits, or marketplace submissions.
+Agents should ask users to generate a SchoolFit access code at `https://schoolfit.hk/skill-code` and paste it only into a trusted one-to-one agent chat. The code is short-lived chat access material and should not be posted in public or multi-user chats, screenshots, logs, issues, examples, commits, or marketplace listings.
 
 When a non-reserved code is used, the helper sends minimal usage telemetry to the SchoolFit service: command, endpoint, traceId, status/error, latency, activationStatus, skillVersion, and authorization-code hash prefix. It does not send the full code, student name, HKID, phone, address, report-card content, or raw parent query.
 

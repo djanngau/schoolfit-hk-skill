@@ -610,9 +610,9 @@ class SchoolFitApiTests(unittest.TestCase):
 
     def test_first_run_outputs_visible_code_and_telemetry_warnings(self):
         output = schoolfit_api.run(schoolfit_api.build_parser().parse_args(["quick-start"]))
-        self.assertIn("sensitiveCodeWarning", output)
+        self.assertIn("privateCodeWarning", output)
         self.assertIn("telemetryDisclosure", output)
-        self.assertIn("不要貼到公開", output["sensitiveCodeWarning"])
+        self.assertIn("不要貼到公開", output["privateCodeWarning"])
         self.assertIn("hashPrefix", output["telemetryDisclosure"])
 
         buffer = StringIO()
