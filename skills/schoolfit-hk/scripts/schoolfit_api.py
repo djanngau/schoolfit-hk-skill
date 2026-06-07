@@ -23,8 +23,8 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.1.0"
-SKILL_VERSION_HEADER_VERSION = "1.1.0"
+SKILL_VERSION = "1.1.1"
+SKILL_VERSION_HEADER_VERSION = "1.1.1"
 MAX_COMPARE_IDS = 4
 ROBUST_SEARCH_PAGE_SIZE = 1000
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
@@ -101,10 +101,8 @@ OFF_TOPIC_BOUNDARY_MESSAGE = (
     "我只處理香港找學校、比較學校、學額、招生、申請計劃和升學路線問題。"
     "這個問題不屬於 SchoolFit HK 範圍，所以不會使用 SchoolFit Skill 或大模型 API。"
 )
-SCHOOLFIT_SKILL_CONFIG_ENV = "SCHOOLFIT_SKILL_CODE"
+SCHOOLFIT_SKILL_CODE_ENV = "SCHOOLFIT_SKILL_CODE"
 SCHOOLFIT_SKILL_LEGACY_CODE_ENV = "SCHOOLFIT_SKILL_API_CODE"
-SCHOOLFIT_SKILL_CONFIG_PATH_ENV = "SCHOOLFIT_SKILL_CONFIG"
-DEFAULT_SKILL_CONFIG_PATH = os.path.expanduser("~/.schoolfit-hk/skill.json")
 AGENT_HANDOFF_SCHEMA_VERSION = "2026-06-06"
 
 TraceId = str
@@ -303,14 +301,17 @@ def is_user_skill_code(code: str | None) -> bool:
 
 
 def authorization_footer(code: str | None, *, activation_status: ActivationMode | None = None) -> dict[str, Any]:
-    exact_code = str(code).strip() if is_user_skill_code(code) else None
+    has_user_code = is_user_skill_code(code)
     return {
-        "required": bool(exact_code),
-        "authorizationCode": exact_code,
-        "display": exact_code or code_display(code),
-        "hashPrefix": code_hash_prefix(code),
+        "required": bool(has_user_code),
+        "authorizationCode": None,
+        "display": code_display(code) if has_user_code else "",
+        "hashPrefix": code_hash_prefix(code) if has_user_code else "",
         "activationStatus": activation_status,
-        "placement": "Append this block at the end of every parent-facing final answer whenever required is true.",
+        "placement": (
+            "Append only source and data-updated lines at the end of parent-facing final answers. "
+            "Never include the exact sfhk_ authorization code in the final answer."
+        ),
         "labels": {
             "zhHant": "授權碼",
             "zhHans": "授权码",
@@ -318,7 +319,7 @@ def authorization_footer(code: str | None, *, activation_status: ActivationMode 
         },
         "requiredLines": [
             "資料來源 / 资料来源 / Source: SchoolFit HK (https://schoolfit.hk/)",
-            "授權碼 / 授权码 / Authorization code: the exact sfhk_ code from authorizationCode",
+            "授權碼 / 授权码 / Authorization code: already provided in this trusted chat; do not display the exact code",
             "資料更新時間 / 数据更新时间 / Data updated: prefer returned updatedAt/fetchedAt/lastSeenAt; otherwise use the current SchoolFit query date",
         ],
         "dataUpdatedAtPolicy": (
@@ -326,22 +327,28 @@ def authorization_footer(code: str | None, *, activation_status: ActivationMode 
             "If none is returned, use the current SchoolFit query date and do not imply it is an official school update time."
         ),
         "doNotPersist": True,
+        "doNotExposeExactCode": True,
     }
 
 
 def authorization_code_policy(footer: dict[str, Any] | None = None) -> dict[str, Any]:
     footer = footer or authorization_footer(None)
     return {
-        "mustCarryForward": True,
+        "mustCarryForward": False,
+        "mustCarryForwardForToolCalls": True,
+        "mustRevealInFinalAnswer": False,
         "required": bool(footer.get("required")),
-        "authorizationCode": footer.get("authorizationCode"),
-        "runtimeField": "finalAnswerFooter.authorizationCode",
+        "authorizationCode": None,
+        "runtimeFields": ["finalAnswerFooter.display", "finalAnswerFooter.hashPrefix"],
         "placement": footer.get("placement"),
         "footerLabels": footer.get("labels"),
         "requiredLines": footer.get("requiredLines"),
         "dataUpdatedAtPolicy": footer.get("dataUpdatedAtPolicy"),
         "whenMissing": "If no sfhk_ authorization code is available, ask the user to open https://schoolfit.hk/skill-code and paste the code back into the same chat.",
-        "privacy": "The code is a trial-run authorization and telemetry key. Keep it only in active chat context; do not write it to disk, README, examples, logs, commits or marketplace material.",
+        "privacy": (
+            "The code is a trial-run authorization and telemetry key. Ask users to paste it only in a trusted one-to-one Agent chat. "
+            "Keep it only in active chat context or explicit runtime environment variables; do not write it to disk, README, examples, logs, commits, marketplace material or final answers."
+        ),
     }
 
 
@@ -357,55 +364,13 @@ def apply_authorization_policy_to_briefs(value: Any, footer: dict[str, Any]) -> 
             apply_authorization_policy_to_briefs(item, footer)
 
 
-def load_saved_skill_code() -> str | None:
-    config_path = os.environ.get(SCHOOLFIT_SKILL_CONFIG_PATH_ENV, DEFAULT_SKILL_CONFIG_PATH)
-    try:
-        with open(config_path, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-    except FileNotFoundError:
-        return None
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    code = data.get("code")
-    return str(code).strip() if isinstance(code, str) and code.strip() else None
-
-
-def save_skill_code(code: str) -> None:
-    config_path = os.environ.get(SCHOOLFIT_SKILL_CONFIG_PATH_ENV, DEFAULT_SKILL_CONFIG_PATH)
-    os.makedirs(os.path.dirname(config_path), exist_ok=True)
-    payload = {
-        "code": code.strip(),
-        "updatedAt": int(time.time()),
-    }
-    with open(config_path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False)
-
-
-def mark_skill_code_activated(code: str, activation_status: ActivationMode = "active") -> None:
-    config_path = os.environ.get(SCHOOLFIT_SKILL_CONFIG_PATH_ENV, DEFAULT_SKILL_CONFIG_PATH)
-    os.makedirs(os.path.dirname(config_path), exist_ok=True)
-    payload = {
-        "code": code.strip(),
-        "activationStatus": activation_status,
-        "activatedAt": int(time.time()),
-    }
-    with open(config_path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False)
-
-
 def resolve_skill_code(cli_code: str | None = None, *, allow_fallback: bool = True) -> str | None:
     if cli_code and str(cli_code).strip():
         return str(cli_code).strip()
 
-    env_code = os.environ.get(SCHOOLFIT_SKILL_CONFIG_ENV, "").strip()
+    env_code = os.environ.get(SCHOOLFIT_SKILL_CODE_ENV, "").strip()
     if env_code:
         return env_code
-
-    saved_code = load_saved_skill_code()
-    if saved_code:
-        return saved_code
 
     legacy_code = os.environ.get(SCHOOLFIT_SKILL_LEGACY_CODE_ENV, "").strip()
     if legacy_code:
@@ -442,15 +407,19 @@ def activation_required_output(command: str, trace_id: TraceId, code: str | None
         "activationUrlPolicy": activation_url_policy(),
         "message": SKILL_REQUIRES_CODE_MESSAGE,
         "interactionStyle": INTERACTION_STYLE,
-        "chatInstruction": "請把取得的授權碼原文貼回這個聊天窗口，例如：我的 SchoolFit 授權碼是 sfhk_xxxxx。收到後我會直接幫你查，不需要你操作命令行。",
-        "agentInstruction": "收到用戶授權碼後，後續工具調用請使用 --skill-code 或 SCHOOLFIT_SKILL_CODE 傳入該碼；不要要求用戶操作命令行。",
+        "chatInstruction": (
+            "請只在你信任的一對一 Agent 聊天窗口貼上授權碼，例如：我的 SchoolFit 授權碼是 sfhk_xxxxx。"
+            "不要把授權碼貼到公開、多人的聊天或會被轉存的日誌。收到後我會直接幫你查，不會要求你保存到本地。"
+        ),
+        "agentInstruction": "收到用戶授權碼後，後續工具調用請使用 --skill-code 或 SCHOOLFIT_SKILL_CODE 傳入該碼；不要要求用戶操作命令行，不要寫入磁碟，也不要在最終回答顯示完整碼。",
         "quickStart": {
             "step1": "打開 https://schoolfit.hk/skill-code。若網址後面有 ?、# 或其他字串，請先刪到 /skill-code 為止。",
             "step2": "點擊生成授權碼。",
-            "step3": "把授權碼原文貼回同一個 Agent 聊天窗口。",
+            "step3": "只把授權碼原文貼回你信任的同一個一對一 Agent 聊天窗口。",
             "step4": "之後直接問：幫我找沙田 Band 1 英文男女校，或查小學、幼稚園、國際學校、專上教育選項。",
         },
         "example": "我的 SchoolFit 授權碼是 sfhk_xxxxxxxxxxxxxxxx",
+        "sensitiveCodeWarning": "授權碼是試用識別和匿名用量統計 key；不要公開分享、截圖外傳、寫入文件、日誌或 commit。",
         "skillVersion": SKILL_VERSION,
         "traceId": trace_id,
         "schoolfitUrl": DEFAULT_BASE_URL,
@@ -2607,7 +2576,7 @@ def with_agent_handoff(brief: dict[str, Any]) -> dict[str, Any]:
         "authorizationCodePolicy": authorization_code_policy(),
         "formatPolicy": {
             "defaultShape": "short_conclusion_then_ranked_options_then_caveats_then_next_steps",
-            "finalFooter": "End every parent-facing final answer with source, authorization code, and data updated lines when an sfhk_ code is available.",
+            "finalFooter": "End parent-facing final answers with source and data updated lines. Never display the exact sfhk_ authorization code; if debugging is needed, use only hashPrefix.",
             "avoid": ["database-console tone", "raw internal keys", "unsupported rankings", "overconfident admissions advice"],
         },
         "qualityChecksBeforeFinal": [
@@ -2618,7 +2587,7 @@ def with_agent_handoff(brief: dict[str, Any]) -> dict[str, Any]:
             "Are vacancy/admission caveats included when used?",
             "Were explicit hard preferences such as no DSS or girls-only respected?",
             "Did the answer avoid asking for personal identifiers or private documents?",
-            "If an sfhk_ authorization code is available, did the final footer include that exact code in every answer?",
+            "If an sfhk_ authorization code is available, did the answer avoid displaying the exact code and keep it only for tool calls?",
         ],
     }
     return brief
@@ -2630,7 +2599,7 @@ def quick_start_output(trace_id: TraceId) -> dict[str, Any]:
         "activationStatus": "not_required",
         "activationUrl": canonical_activation_url(),
         "activationUrlPolicy": activation_url_policy(),
-        "message": "安裝完成後，請先取得 SchoolFit 授權碼並貼回聊天窗口。",
+        "message": "安裝完成後，請先取得 SchoolFit 授權碼，並只貼回你信任的一對一 Agent 聊天窗口。",
         "interactionStyle": INTERACTION_STYLE,
         "friendlyOpening": "你可以直接用日常說法問我，例如想看哪個區、哪類學校、重視英文環境或學費，我會先整理條件再查。",
         "coverage": {
@@ -2647,12 +2616,16 @@ def quick_start_output(trace_id: TraceId) -> dict[str, Any]:
                 "note": "只使用這個固定 URL；如後面帶 ?、# 或其他字串，先刪到 /skill-code。",
             },
             {"label": "生成授權碼", "text": "頁面無需登入，點擊即可生成新的 sfhk_ 開頭授權碼。"},
-            {"label": "貼回 Agent", "text": "把授權碼原文發在同一個聊天窗口，例如：我的 SchoolFit 授權碼是 sfhk_xxxxx。"},
+            {
+                "label": "貼回 Agent",
+                "text": "只把授權碼原文發在你信任的同一個一對一聊天窗口，例如：我的 SchoolFit 授權碼是 sfhk_xxxxx；不要貼到公開或多人聊天。",
+            },
             {"label": "開始提問", "text": "例如：幫我找沙田 Band 1 英文男女校，或查九龍城小學、港島國際學校、JUPAS/副學士銜接。"},
         ],
         "agentRules": [
             "Agent 可在本次聊天上下文使用該 code；不要寫入本地文件、日誌、README 或 Git。",
             "正式查詢請把 code 作為 --skill-code 或 SCHOOLFIT_SKILL_CODE 傳入 helper。",
+            "最終回答不得顯示完整 sfhk_ 授權碼；需要排查時只使用 hashPrefix。",
             "不要要求家長提供 HKID、電話、住址、成績表 PDF 等敏感資料。",
         ],
         "examples": [
@@ -2848,6 +2821,18 @@ def self_check_output() -> dict[str, Any]:
     with open(script_path, "r", encoding="utf-8") as handle:
         script = handle.read()
     chat_path = "/api/" + "agent/chat"
+    forbidden_persistence_patterns = [
+        "SCHOOLFIT_SKILL_" + "CONFIG_PATH_ENV",
+        "DEFAULT_SKILL_" + "CONFIG_PATH",
+        "json" + ".dump(" + "payload",
+        "os" + ".makedirs(os.path." + "dirname",
+    ]
+    forbidden_exact_footer_patterns = [
+        "Authorization code: the " + "exact",
+        "carrying that " + "exact",
+        "footer include that " + "exact",
+        "finalAnswerFooter.authorization" + "Code",
+    ]
     script_checks = [
         ("version_current", f'SKILL_VERSION = "{SKILL_VERSION}"' in script),
         ("host_allowlist", "ALLOWED_HOSTS = {\"schoolfit.hk\"}" in script),
@@ -2856,6 +2841,8 @@ def self_check_output() -> dict[str, Any]:
         ("off_topic_boundary", "detect_off_topic_input" in script and "shouldCallModelApi" in script),
         ("no_agent_chat_default", chat_path not in script),
         ("data_architecture_contract", "DATA_ARCHITECTURE_CONTRACT" in script and "not-primary-store" in script),
+        ("no_local_code_persistence", not any(pattern in script for pattern in forbidden_persistence_patterns)),
+        ("no_exact_code_final_footer", not any(pattern in script for pattern in forbidden_exact_footer_patterns)),
     ]
     for name, passed in script_checks:
         ok = ok and passed
@@ -4018,12 +4005,11 @@ def print_authorization_footer(data: dict[str, Any]) -> None:
     footer = data.get("finalAnswerFooter") if isinstance(data, dict) else None
     if not isinstance(footer, dict) or not footer.get("required"):
         return
-    code = footer.get("authorizationCode")
-    if not code:
-        return
     print("\n## 回答識別")
     print("- 資料來源: SchoolFit HK (https://schoolfit.hk/)")
-    print(f"- 授權碼: `{code}`")
+    print("- 授權碼: 已在本對話中提供，完整碼不會在回答中顯示")
+    if footer.get("hashPrefix"):
+        print(f"- 授權碼識別: hashPrefix `{footer.get('hashPrefix')}`")
     print(f"- 資料更新時間: {footer_updated_at(data)}")
 
 
@@ -4430,9 +4416,9 @@ def build_parser() -> argparse.ArgumentParser:
     advisor.add_argument("--no-recommend", action="store_true", help="Do not call the recommendation endpoint.")
     advisor.add_argument("--include-decision-brief", action="store_true", help="Ask advisor-search to include decisionBriefApiUrl pointers for top schools.")
 
-    setup_code = sub.add_parser("setup-code", help="Save authorization code to config and activate it.")
+    setup_code = sub.add_parser("setup-code", help="Deprecated: validate authorization code without saving it.")
     add_output_options(setup_code)
-    setup_code.add_argument("--code", required=True, help="SchoolFit authorization code to store in config.")
+    setup_code.add_argument("--code", required=True, help="SchoolFit authorization code to validate for this run only.")
 
     shortlist = sub.add_parser("shortlist-builder", help="Build parent-friendly shortlist buckets from a natural-language request.")
     add_output_options(shortlist)
@@ -4795,13 +4781,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if not setup_code:
             raise SchoolFitError("setup-code requires --code.")
         normalized_code = extract_skill_code_from_text(setup_code) or setup_code.strip()
-        save_skill_code(normalized_code)
         activation_status = activate_skill_code(base_url, normalized_code, trace_id)
-        if activation_status == "active":
-            mark_skill_code_activated(normalized_code, activation_status)
-        config_path = os.environ.get(SCHOOLFIT_SKILL_CONFIG_PATH_ENV, DEFAULT_SKILL_CONFIG_PATH)
         return {
-            "configPath": config_path,
+            "stored": False,
+            "persistencePolicy": "Local authorization-code storage is disabled. Keep the code in the active chat context, --skill-code, or SCHOOLFIT_SKILL_CODE only.",
             "activationStatus": activation_status,
             "activationResult": activation_result_output(normalized_code, activation_status, trace_id),
             "skillVersion": SKILL_VERSION,

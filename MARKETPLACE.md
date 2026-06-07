@@ -50,9 +50,11 @@ education, hong-kong, school-selection, secondary-school, primary-school, kinder
 
 - Host allowlist is restricted to `schoolfit.hk`.
 - The helper rejects custom schemes, credentials, custom ports, and non-API paths.
-- First use guides the user to `https://schoolfit.hk/skill-code` to generate a trial activation code, then paste it back into the same chat window for the Agent.
+- First use guides the user to `https://schoolfit.hk/skill-code` to generate a trial activation code, then paste it only into the trusted one-to-one Agent chat window.
 - Authorization page links must be normalized to exactly `https://schoolfit.hk/skill-code`; strip query strings, hash fragments, tracking strings, and path suffixes before opening.
-- The `X-SchoolFit-Skill-Code` header supports activation, rate limiting and anonymous telemetry; it is not a payment token or student identity.
+- The `X-SchoolFit-Skill-Code` header supports activation, rate limiting and anonymous telemetry; it is not a payment token or student identity, but it is treated as sensitive session material.
+- Authorization codes are not persisted locally. The deprecated `setup-code` command validates a code for the current run only and returns `stored: false`.
+- Parent-facing final answers must not echo the full `sfhk_...` code; debugging surfaces use only hash prefixes.
 - The v1 skill does not call `/api/agent/chat` to avoid LLM cost and persistent session creation.
 - The skill keeps official facts, third-party Band references where applicable, community summaries, vacancy signals, and admission notices separated. Vacancy wording follows the API `display` object so missing data is not presented as no places.
 
@@ -72,7 +74,7 @@ ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
 
 - Slug: `schoolfit-hk`
 - Owner: `djanngau`
-- Version: `1.1.0`
+- Version: `1.1.1`
 - Moderation: `CLEAN`
 
 ## Smoke Test

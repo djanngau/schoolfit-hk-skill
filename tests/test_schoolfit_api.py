@@ -493,14 +493,8 @@ class SchoolFitApiTests(unittest.TestCase):
             captured["timeout"] = timeout
             return FakeResponse()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch.dict(
-                "os.environ",
-                {"SCHOOLFIT_SKILL_CONFIG": str(pathlib.Path(tmpdir) / "skill.json")},
-                clear=False,
-            ):
-                with mock.patch("urllib.request.urlopen", fake_urlopen):
-                    data = schoolfit_api.request_json("GET", "https://schoolfit.hk", "/api/schools")
+        with mock.patch("urllib.request.urlopen", fake_urlopen):
+            data = schoolfit_api.request_json("GET", "https://schoolfit.hk", "/api/schools")
         self.assertEqual(data, {"ok": True})
         self.assertEqual(captured["headers"]["X-schoolfit-skill-code"], "schoolfit-openclaw-v1-reserved")
 
@@ -542,79 +536,57 @@ class SchoolFitApiTests(unittest.TestCase):
             "--skill-code",
             "sfhk_after_subcommand",
         ])
-        # Isolate the on-disk config so running run() does not read or write the
-        # real ~/.schoolfit-hk/skill.json (which made the suite order-dependent).
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch.dict(
-                "os.environ",
-                {"SCHOOLFIT_SKILL_CONFIG": str(pathlib.Path(tmpdir) / "skill.json")},
-                clear=False,
-            ):
-                with mock.patch.object(schoolfit_api, "request_json", side_effect=[
-                    {"activationStatus": "active"},
-                    {"count": 0, "schools": []},
-                ]) as request:
-                    schoolfit_api.run(args)
+        with mock.patch.object(schoolfit_api, "request_json", side_effect=[
+            {"activationStatus": "active"},
+            {"count": 0, "schools": []},
+        ]) as request:
+            schoolfit_api.run(args)
         self.assertEqual(request.call_args_list[-1].kwargs["skill_code"], "sfhk_after_subcommand")
 
-    def test_saved_skill_code_is_used_before_reserved_fallback(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = pathlib.Path(tmpdir) / "skill.json"
-            env = {
-                "SCHOOLFIT_SKILL_CONFIG": str(config_path),
-                "SCHOOLFIT_SKILL_CODE": "",
-                "SCHOOLFIT_SKILL_API_CODE": "",
-            }
-            with mock.patch.dict("os.environ", env, clear=False):
-                schoolfit_api.save_skill_code("sfhk_saved_code")
-                self.assertEqual(schoolfit_api.resolve_skill_code(), "sfhk_saved_code")
+    def test_saved_skill_code_is_not_used_before_reserved_fallback(self):
+        with mock.patch.dict("os.environ", {"SCHOOLFIT_SKILL_CODE": "", "SCHOOLFIT_SKILL_API_CODE": ""}, clear=False):
+            self.assertEqual(schoolfit_api.resolve_skill_code(), schoolfit_api.SCHOOLFIT_SKILL_CLIENT_CODE)
 
-    def test_skill_code_precedence_prefers_cli_then_env_then_config(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = pathlib.Path(tmpdir) / "skill.json"
-            with mock.patch.dict("os.environ", {"SCHOOLFIT_SKILL_CONFIG": str(config_path), "SCHOOLFIT_SKILL_CODE": "sfhk_env_code"}, clear=False):
-                schoolfit_api.save_skill_code("sfhk_saved_code")
-                self.assertEqual(schoolfit_api.resolve_skill_code("sfhk_cli_code"), "sfhk_cli_code")
-                self.assertEqual(schoolfit_api.resolve_skill_code(), "sfhk_env_code")
-
-    def test_legacy_skill_api_code_is_after_saved_config(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = pathlib.Path(tmpdir) / "skill.json"
-            env = {
-                "SCHOOLFIT_SKILL_CONFIG": str(config_path),
-                "SCHOOLFIT_SKILL_CODE": "",
+    def test_skill_code_precedence_prefers_cli_then_env_then_legacy(self):
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "SCHOOLFIT_SKILL_CODE": "sfhk_env_code",
                 "SCHOOLFIT_SKILL_API_CODE": "sfhk_legacy_code",
-            }
-            with mock.patch.dict("os.environ", env, clear=False):
-                schoolfit_api.save_skill_code("sfhk_saved_code")
-                self.assertEqual(schoolfit_api.resolve_skill_code(), "sfhk_saved_code")
+            },
+            clear=False,
+        ):
+            self.assertEqual(schoolfit_api.resolve_skill_code("sfhk_cli_code"), "sfhk_cli_code")
+            self.assertEqual(schoolfit_api.resolve_skill_code(), "sfhk_env_code")
+
+    def test_legacy_skill_api_code_is_used_after_env(self):
+        env = {
+            "SCHOOLFIT_SKILL_CODE": "",
+            "SCHOOLFIT_SKILL_API_CODE": "sfhk_legacy_code",
+        }
+        with mock.patch.dict("os.environ", env, clear=False):
+            self.assertEqual(schoolfit_api.resolve_skill_code(), "sfhk_legacy_code")
 
     def test_reserved_fallback_when_no_code_is_configured(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = pathlib.Path(tmpdir) / "missing.json"
-            env = {
-                "SCHOOLFIT_SKILL_CONFIG": str(config_path),
-                "SCHOOLFIT_SKILL_CODE": "",
-                "SCHOOLFIT_SKILL_API_CODE": "",
-            }
-            with mock.patch.dict("os.environ", env, clear=False):
-                self.assertEqual(schoolfit_api.resolve_skill_code(), schoolfit_api.SCHOOLFIT_SKILL_CLIENT_CODE)
+        env = {
+            "SCHOOLFIT_SKILL_CODE": "",
+            "SCHOOLFIT_SKILL_API_CODE": "",
+        }
+        with mock.patch.dict("os.environ", env, clear=False):
+            self.assertEqual(schoolfit_api.resolve_skill_code(), schoolfit_api.SCHOOLFIT_SKILL_CLIENT_CODE)
 
     def test_activate_prefers_pasted_code_over_reserved_fallback(self):
         args = schoolfit_api.build_parser().parse_args([
             "activate",
             "我的 SchoolFit 授權碼是 sfhk_pasted_code_123456",
         ])
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = pathlib.Path(tmpdir) / "missing.json"
-            env = {
-                "SCHOOLFIT_SKILL_CONFIG": str(config_path),
-                "SCHOOLFIT_SKILL_CODE": "",
-                "SCHOOLFIT_SKILL_API_CODE": "",
-            }
-            with mock.patch.dict("os.environ", env, clear=False):
-                with mock.patch.object(schoolfit_api, "request_json", return_value={"activationStatus": "active"}) as request:
-                    output = schoolfit_api.run(args)
+        env = {
+            "SCHOOLFIT_SKILL_CODE": "",
+            "SCHOOLFIT_SKILL_API_CODE": "",
+        }
+        with mock.patch.dict("os.environ", env, clear=False):
+            with mock.patch.object(schoolfit_api, "request_json", return_value={"activationStatus": "active"}) as request:
+                output = schoolfit_api.run(args)
         self.assertTrue(output["activated"])
         self.assertEqual(request.call_args.kwargs["skill_code"], "sfhk_pasted_code_123456")
         self.assertEqual(output["code"]["display"], "sfhk...3456")
@@ -626,16 +598,13 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertNotIn("sfhk", payload["skillCodeHashPrefix"])
         self.assertNotIn("123456", payload["skillCodeHashPrefix"])
 
-    def test_setup_code_saves_after_activation(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = pathlib.Path(tmpdir) / "skill.json"
-            with mock.patch.dict("os.environ", {"SCHOOLFIT_SKILL_CONFIG": str(config_path)}, clear=False):
-                args = schoolfit_api.build_parser().parse_args(["setup-code", "--code", "sfhk_setup_code"])
-                with mock.patch.object(schoolfit_api, "request_json", return_value={"activationStatus": "active"}) as request:
-                    output = schoolfit_api.run(args)
-                self.assertEqual(output["configPath"], str(config_path))
-                self.assertEqual(schoolfit_api.load_saved_skill_code(), "sfhk_setup_code")
-                self.assertEqual(request.call_args.kwargs["skill_code"], "sfhk_setup_code")
+    def test_setup_code_validates_without_saving(self):
+        args = schoolfit_api.build_parser().parse_args(["setup-code", "--code", "sfhk_setup_code"])
+        with mock.patch.object(schoolfit_api, "request_json", return_value={"activationStatus": "active"}) as request:
+            output = schoolfit_api.run(args)
+        self.assertFalse(output["stored"])
+        self.assertIn("disabled", output["persistencePolicy"])
+        self.assertEqual(request.call_args.kwargs["skill_code"], "sfhk_setup_code")
 
     def test_telemetry_failure_does_not_raise(self):
         with mock.patch.object(schoolfit_api, "request_json", side_effect=schoolfit_api.SchoolFitError("boom")):
@@ -2413,9 +2382,11 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertIn("personal phone", handoff["contactPolicy"]["privacyBoundary"])
         self.assertEqual(handoff["toolUsePolicy"]["contactLookupFlow"], ["resolve-school", "school-detail"])
         self.assertIn("/api/agent/chat", handoff["toolUsePolicy"]["doNotCall"])
-        self.assertTrue(handoff["authorizationCodePolicy"]["mustCarryForward"])
+        self.assertFalse(handoff["authorizationCodePolicy"]["mustCarryForward"])
+        self.assertTrue(handoff["authorizationCodePolicy"]["mustCarryForwardForToolCalls"])
+        self.assertFalse(handoff["authorizationCodePolicy"]["mustRevealInFinalAnswer"])
         self.assertFalse(handoff["authorizationCodePolicy"]["required"])
-        self.assertIn("finalAnswerFooter.authorizationCode", handoff["authorizationCodePolicy"]["runtimeField"])
+        self.assertIn("finalAnswerFooter.hashPrefix", handoff["authorizationCodePolicy"]["runtimeFields"])
         verification = handoff["officialSiteVerificationPolicy"]
         self.assertIn("學額", verification["freshnessTriggers"])
         self.assertIn("schools[].officialUrl", verification["allowedUrlFields"])
@@ -2426,7 +2397,7 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertTrue(any("newer or conflicts" in item for item in verification["comparisonProtocol"]))
         self.assertTrue(any("hard preferences" in item for item in handoff["qualityChecksBeforeFinal"]))
         self.assertTrue(any("only URLs returned by SchoolFit" in item for item in handoff["qualityChecksBeforeFinal"]))
-        self.assertTrue(any("authorization code" in item for item in handoff["qualityChecksBeforeFinal"]))
+        self.assertTrue(any("avoid displaying the exact code" in item for item in handoff["qualityChecksBeforeFinal"]))
 
     def test_core_llm_briefs_include_agent_handoff_contract(self):
         search = schoolfit_api.compact_output("search-schools", {"count": 0, "schools": []})
@@ -2457,21 +2428,23 @@ class SchoolFitApiTests(unittest.TestCase):
             "--skill-code",
             "sfhk_visible_code_123456",
         ])
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch.dict("os.environ", {"SCHOOLFIT_SKILL_CONFIG": str(pathlib.Path(tmpdir) / "skill.json")}, clear=False):
-                with mock.patch.object(schoolfit_api, "request_json", side_effect=[
-                    {"activationStatus": "active"},
-                    {"count": 0, "schools": [], "updatedAt": "2026-06-07"},
-                ]):
-                    with mock.patch.object(schoolfit_api, "record_telemetry"):
-                        output = schoolfit_api.run(args)
+        with mock.patch.object(schoolfit_api, "request_json", side_effect=[
+            {"activationStatus": "active"},
+            {"count": 0, "schools": [], "updatedAt": "2026-06-07"},
+        ]):
+            with mock.patch.object(schoolfit_api, "record_telemetry"):
+                output = schoolfit_api.run(args)
         footer = output["finalAnswerFooter"]
         self.assertTrue(footer["required"])
-        self.assertEqual(footer["authorizationCode"], "sfhk_visible_code_123456")
+        self.assertIsNone(footer["authorizationCode"])
+        self.assertEqual(footer["display"], "sfhk...3456")
+        self.assertEqual(footer["hashPrefix"], schoolfit_api.code_hash_prefix("sfhk_visible_code_123456"))
         self.assertTrue(footer["doNotPersist"])
+        self.assertTrue(footer["doNotExposeExactCode"])
         policy = output["llmBrief"]["agentHandoff"]["authorizationCodePolicy"]
         self.assertTrue(policy["required"])
-        self.assertEqual(policy["authorizationCode"], "sfhk_visible_code_123456")
+        self.assertIsNone(policy["authorizationCode"])
+        self.assertFalse(policy["mustRevealInFinalAnswer"])
         self.assertIn("data updated", " ".join(policy["requiredLines"]).lower())
 
     def test_reserved_code_does_not_become_required_authorization_footer(self):
@@ -2479,7 +2452,7 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertFalse(footer["required"])
         self.assertIsNone(footer["authorizationCode"])
 
-    def test_markdown_authorization_footer_prints_exact_active_code(self):
+    def test_markdown_authorization_footer_does_not_print_exact_active_code(self):
         data = {
             "count": 0,
             "schools": [],
@@ -2491,7 +2464,9 @@ class SchoolFitApiTests(unittest.TestCase):
             schoolfit_api.print_markdown("search-schools", data)
             schoolfit_api.print_authorization_footer(data)
         rendered = buffer.getvalue()
-        self.assertIn("授權碼: `sfhk_visible_code_123456`", rendered)
+        self.assertNotIn("sfhk_visible_code_123456", rendered)
+        self.assertIn("完整碼不會在回答中顯示", rendered)
+        self.assertIn(schoolfit_api.code_hash_prefix("sfhk_visible_code_123456"), rendered)
         self.assertIn("資料更新時間: 2026-06-07", rendered)
 
     def test_compact_search_and_compare_preserve_official_source_urls(self):

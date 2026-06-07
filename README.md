@@ -1,6 +1,6 @@
 # SchoolFit HK Skill for OpenClaw
 
-Version: `1.1.0`
+Version: `1.1.1`
 
 SchoolFit HK lets OpenClaw, ArkAgent, Claude Code and compatible agents help Hong Kong families search, compare, shortlist and plan school applications through the public [SchoolFit HK](https://schoolfit.hk) Skill API.
 
@@ -47,10 +47,10 @@ npx skills add djanngau/schoolfit-hk-skill
 After installation, the Agent should ask the user to get a SchoolFit authorization code:
 
 ```text
-請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit 授權碼，複製後直接發到這個聊天窗口。我收到後就可以幫你查中學、小學、幼稚園、國際學校和專上教育資料，做比較、推薦和申請計劃。
+請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit 授權碼，複製後只發到這個你信任的一對一聊天窗口。授權碼不要貼到公開或多人聊天，也不要截圖外傳。我收到後就可以幫你查中學、小學、幼稚園、國際學校和專上教育資料，做比較、推薦和申請計劃；完整授權碼不會出現在最終回答。
 ```
 
-When the user pastes a code such as `sfhk_...`, keep it only in the active chat context and pass it to helper calls as `--skill-code`. Do not write real user codes into files, logs, examples, commits, or marketplace material.
+When the user pastes a code such as `sfhk_...`, keep it only in the active chat context and pass it to helper calls as `--skill-code`. Do not write real user codes into files, logs, examples, commits, marketplace material, or parent-facing final answers.
 
 Always show the authorization page as exactly `https://schoolfit.hk/skill-code`. If a copied link contains query strings, hash fragments, tracking parameters, or any path suffix after `/skill-code`, normalize it back to the canonical URL.
 
@@ -103,7 +103,7 @@ Every advisory-style command returns `llmBrief.agentHandoff` for the calling Age
 - Use `Band 參考` / `非官方 Band 參考`, never `官方 Band`.
 - Use vacancy `display` wording and never present vacancies as admission guarantees.
 - For time-sensitive facts, follow `officialSiteVerificationPolicy`: verify only against URLs returned in the same SchoolFit result, then label any newer/conflicting official-site facts as a cross-check.
-- When a current-chat `sfhk_...` authorization code is available, every parent-facing final answer must end with a small footer carrying that exact code: `資料來源/资料来源`, `授權碼/授权码`, and `資料更新時間/数据更新时间`. Use returned `updatedAt`, `fetchedAt`, `lastSeenAt`, or `dataMonth` first; otherwise write the current SchoolFit query date.
+- When a current-chat `sfhk_...` authorization code is available, carry it only into SchoolFit helper calls. Parent-facing final answers must not display the exact code. End with `資料來源/资料来源` and `資料更新時間/数据更新时间`; for debugging, use only the returned hash prefix.
 - Ask at most three missing-info questions and never ask for HKID, phone, address, full student name or private documents.
 - Answer school official contact lookups when returned by the API, but never ask for or repeat the family's personal contact details.
 - Avoid raw JSON unless the user explicitly asks for API/debug output.
@@ -149,6 +149,8 @@ Use compact Skill API payloads by default. Add `--verbose` only when a tester or
 - Blocks non-school/model-probing/token-wasting prompts locally before any SchoolFit API or model API call.
 - Sends `X-SchoolFit-Skill-Code`, `X-SchoolFit-Skill-Version` and trace metadata for activation, rate limiting and anonymous telemetry.
 - Treats the authorization code as a trial-run API/telemetry key, not a payment token, password or student identity.
+- Does not persist authorization codes locally. The deprecated `setup-code` command validates a code for the current run only and returns `stored: false`.
+- Does not echo the full `sfhk_...` code in parent-facing final answers.
 - Blocks obvious HKID, phone and email input before API calls and asks the user to remove sensitive data.
 
 ## Marketplace Summary
@@ -157,7 +159,7 @@ SchoolFit HK helps agents search, compare, shortlist and recommend Hong Kong sch
 
 ## Release Notes
 
-- Current ClawHub version: `1.1.0`
+- Current ClawHub version: `1.1.1`
 - ClawHub slug: `schoolfit-hk`
 - Owner: `djanngau`
 - Repository: [github.com/djanngau/schoolfit-hk-skill](https://github.com/djanngau/schoolfit-hk-skill)
