@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""SchoolFit HK API helper for OpenClaw-compatible skills.
+"""SchoolFit API helper for OpenClaw-compatible skills.
 
-This script intentionally talks only to the public SchoolFit HK API. It does
+This script intentionally talks only to the public SchoolFit API. It does
 not read local databases, Prisma files, snapshots, cookies, or private keys.
 """
 
@@ -23,8 +23,8 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.1.3"
-SKILL_VERSION_HEADER_VERSION = "1.1.3"
+SKILL_VERSION = "1.1.4"
+SKILL_VERSION_HEADER_VERSION = "1.1.4"
 MAX_COMPARE_IDS = 4
 ROBUST_SEARCH_PAGE_SIZE = 1000
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
@@ -49,7 +49,7 @@ SKILL_CODE_SAFETY_WARNING = (
     "不要截圖外傳、不要寫入文件、日誌、issue、README、commit 或 marketplace material。"
 )
 SKILL_TELEMETRY_DISCLOSURE = (
-    "使用非保留授權碼查詢時，helper 會向 SchoolFit HK 傳送最小用量紀錄：command、endpoint、traceId、"
+    "使用非保留授權碼查詢時，helper 會向 SchoolFit 服務傳送最小用量紀錄：command、endpoint、traceId、"
     "status/error、latency、activationStatus、skillVersion 和授權碼 hashPrefix。遙測不包含完整 sfhk_ 授權碼、"
     "學生姓名、HKID、電話、地址或成績表內容；如不同意，請不要貼授權碼或發起查詢。"
 )
@@ -108,7 +108,7 @@ PII_WARNING_MESSAGE = (
 )
 OFF_TOPIC_BOUNDARY_MESSAGE = (
     "我只處理香港找學校、比較學校、學額、招生、申請計劃和升學路線問題。"
-    "這個問題不屬於 SchoolFit HK 範圍，所以不會使用 SchoolFit Skill 或大模型 API。"
+    "這個問題不屬於 SchoolFit 範圍，所以不會使用 SchoolFit Skill 或大模型 API。"
 )
 SCHOOLFIT_SKILL_CODE_ENV = "SCHOOLFIT_SKILL_CODE"
 SCHOOLFIT_SKILL_LEGACY_CODE_ENV = "SCHOOLFIT_SKILL_API_CODE"
@@ -211,7 +211,7 @@ SCHOOL_LEVEL_PROMPTS = {
 }
 INTERACTION_STYLE = {
     "tone": "warm, concise, parent-friendly, and evidence-conscious",
-    "opening": "可以，我先幫你把條件收窄，再用 SchoolFit HK 資料逐步核實。",
+    "opening": "可以，我先幫你把條件收窄，再用 SchoolFit 資料逐步核實。",
     "askMissingInfo": "我先不需要孩子姓名或證件資料，只要補充以下幾點就可以幫你查得更準：",
     "privacyReassurance": "為保護學生私隱，請先刪走可識別個人資料；保留地區、年級、偏好和預算已足夠。",
     "sourceReassurance": "我會把官方資料、非官方參考、學額和招生時效分開說明。",
@@ -327,7 +327,7 @@ def authorization_footer(code: str | None, *, activation_status: ActivationMode 
             "en": "Authorization code",
         },
         "requiredLines": [
-            "資料來源 / 资料来源 / Source: SchoolFit HK (https://schoolfit.hk/)",
+            "資料來源 / 资料来源 / Source: SchoolFit (https://schoolfit.hk/)",
             "授權碼 / 授权码 / Authorization code: already provided in this trusted chat; do not display the exact code",
             "資料更新時間 / 数据更新时间 / Data updated: prefer returned updatedAt/fetchedAt/lastSeenAt; otherwise use the current SchoolFit query date",
         ],
@@ -430,7 +430,7 @@ def activation_required_output(command: str, trace_id: TraceId, code: str | None
         "example": "我的 SchoolFit 授權碼是 sfhk_xxxxxxxxxxxxxxxx",
         "sensitiveCodeWarning": SKILL_CODE_SAFETY_WARNING,
         "telemetryDisclosure": SKILL_TELEMETRY_DISCLOSURE,
-        "consentNotice": "貼上授權碼並要求查詢，即表示你同意本次 SchoolFit HK API 調用和上述最小用量紀錄。",
+        "consentNotice": "貼上授權碼並要求查詢，即表示你同意本次 SchoolFit API 調用和上述最小用量紀錄。",
         "skillVersion": SKILL_VERSION,
         "traceId": trace_id,
         "schoolfitUrl": DEFAULT_BASE_URL,
@@ -463,7 +463,7 @@ def activation_result_output(code: str | None, activation_status: ActivationMode
         "activationUrlPolicy": activation_url_policy(),
         "sensitiveCodeWarning": SKILL_CODE_SAFETY_WARNING,
         "telemetryDisclosure": SKILL_TELEMETRY_DISCLOSURE,
-        "consentNotice": "後續 SchoolFit 查詢會使用此授權碼調用 SchoolFit HK API，並產生上述最小用量紀錄。",
+        "consentNotice": "後續 SchoolFit 查詢會使用此授權碼調用 SchoolFit API，並產生上述最小用量紀錄。",
         "finalAnswerFooter": footer,
         "skillVersion": SKILL_VERSION,
         "traceId": trace_id,
@@ -596,7 +596,7 @@ def extract_school_ids_from_search(payload: dict[str, Any], limit: int = MAX_COM
 def build_source_ledger() -> dict[str, Any]:
     return {
         "officialFacts": [{
-            "name": "SchoolFit HK API",
+            "name": "SchoolFit API",
             "scope": "School profile fields across secondary, primary, kindergarten, international and postsecondary SchoolFit public endpoints",
             "source": "https://schoolfit.hk/api/",
         }],
@@ -1898,7 +1898,7 @@ def parse_parent_request_text(text: str | None) -> dict[str, Any]:
                 "askMissingInfo": "請改問香港找學校、比較學校、學額、招生或升學路線相關問題。",
                 "questions": [],
                 "privacyReminder": "不用提供姓名、HKID、電話、住址或成績表原件。",
-                "sourceReminder": "SchoolFit HK 只會在學校查詢範圍內使用資料來源。",
+                "sourceReminder": "SchoolFit 只會在學校查詢範圍內使用資料來源。",
             },
             "llmBrief": {
                 "command": "parse-parent-request",
@@ -2619,11 +2619,11 @@ def quick_start_output(trace_id: TraceId) -> dict[str, Any]:
         "message": "安裝完成後，請先取得 SchoolFit 授權碼，並只貼回你信任的一對一 Agent 聊天窗口。",
         "sensitiveCodeWarning": SKILL_CODE_SAFETY_WARNING,
         "telemetryDisclosure": SKILL_TELEMETRY_DISCLOSURE,
-        "consentNotice": "貼上授權碼並要求查詢，即表示你同意本次 SchoolFit HK API 調用和上述最小用量紀錄。",
+        "consentNotice": "貼上授權碼並要求查詢，即表示你同意本次 SchoolFit API 調用和上述最小用量紀錄。",
         "interactionStyle": INTERACTION_STYLE,
         "friendlyOpening": "你可以直接用日常說法問我，例如想看哪個區、哪類學校、重視英文環境或學費，我會先整理條件再查。",
         "coverage": {
-            "summary": "SchoolFit HK Skill 支援中學、小學、幼稚園、國際學校和專上教育資料庫。",
+            "summary": "SchoolFit Skill 支援中學、小學、幼稚園、國際學校和專上教育資料庫。",
             "levels": [
                 {"level": level, "label": SCHOOL_LEVEL_LABELS[level], "count": SCHOOL_LEVEL_COUNTS[level]}
                 for level in SCHOOL_LEVELS
@@ -2667,7 +2667,7 @@ def school_levels_output(trace_id: TraceId) -> dict[str, Any]:
         "command": "school-levels",
         "activationStatus": "not_required",
         "coverage": {
-            "summary": "SchoolFit HK Skill covers all current SchoolFit school databases.",
+            "summary": "SchoolFit Skill covers all current SchoolFit school databases.",
             "total": sum(SCHOOL_LEVEL_COUNTS.values()),
             "levels": [
                 {
@@ -2696,7 +2696,7 @@ def school_levels_output(trace_id: TraceId) -> dict[str, Any]:
 def marketplace_demo_payload() -> dict[str, Any]:
     return {
         "coverage": {
-            "summary": "One Skill covers all current SchoolFit HK school databases.",
+            "summary": "One Skill covers all current SchoolFit school databases.",
             "levels": [
                 {"level": level, "label": SCHOOL_LEVEL_LABELS[level], "count": SCHOOL_LEVEL_COUNTS[level]}
                 for level in SCHOOL_LEVELS
@@ -2722,13 +2722,13 @@ def marketplace_demo_payload() -> dict[str, Any]:
         "examples": [
             {
                 "title": "首次啟用",
-                "prompt": "我剛安裝 SchoolFit HK Skill，要怎樣開始？",
+                "prompt": "我剛安裝 SchoolFit Skill，要怎樣開始？",
                 "command": "quick-start --format markdown",
                 "resultSummary": "提示家長打開 https://schoolfit.hk/skill-code 取授權碼，然後貼回聊天窗口。",
             },
             {
                 "title": "查看支援資料庫",
-                "prompt": "SchoolFit HK Skill 支援哪些學校資料庫？",
+                "prompt": "SchoolFit Skill 支援哪些學校資料庫？",
                 "command": "school-levels --format markdown",
                 "resultSummary": "列出中學、小學、幼稚園、國際學校、專上教育庫的數量、--level 參數和示例問法。",
             },
@@ -3645,7 +3645,7 @@ def compact_shortlist(payload: dict[str, Any]) -> dict[str, Any]:
             "中學才使用 Band 參考；其他階段按課程、通勤、費用、語言和用戶明確偏好分桶。"
         ],
         "nextActions": [
-            "先從首選和穩陣各挑 2-3 間，到 SchoolFit HK 詳情頁確認。",
+            "先從首選和穩陣各挑 2-3 間，到 SchoolFit 詳情頁確認。",
             "再按通勤、學費、語言、校風和最新招生/學額訊號縮短名單。",
         ],
         "sourceLedger": search.get("sourceLedger") or build_source_ledger(),
@@ -3656,7 +3656,7 @@ def compact_shortlist(payload: dict[str, Any]) -> dict[str, Any]:
         "Turn the shortlist buckets into a parent-facing action plan.",
         [
             "首選/穩陣/備選是決策輔助，不是錄取預測。",
-            "每間學校要附 SchoolFit HK 連結。",
+            "每間學校要附 SchoolFit 連結。",
             "如果資料不足，先問 missingInfoQuestions。",
         ],
         {
@@ -3709,7 +3709,7 @@ def build_search_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
             "whyMention": " / ".join(str(item) for item in reasons if item),
         })
     must_mention = [
-        "資料來自 SchoolFit HK: https://schoolfit.hk/",
+        "資料來自 SchoolFit: https://schoolfit.hk/",
         "資料不足時寫暫無可靠資料，不要補作判斷。",
     ]
     if secondary_context:
@@ -3722,10 +3722,10 @@ def build_search_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
             {"highlights": highlights, "count": output.get("count", 0)},
         ),
         "purpose": "Use these structured search results to write a polished Hong Kong school advisor answer.",
-        "recommendedTone": "Use the user's language: Traditional Chinese, Simplified Chinese, or English. Be professional and conservative; give the conclusion first, then list 3-5 schools, then point to SchoolFit HK for deeper comparison.",
+        "recommendedTone": "Use the user's language: Traditional Chinese, Simplified Chinese, or English. Be professional and conservative; give the conclusion first, then list 3-5 schools, then point to SchoolFit for deeper comparison.",
         "mustMention": must_mention,
         "highlights": highlights,
-        "answerTemplate": "先簡述共找到多少間；推薦最值得先看的 3-5 間；每間用一句原因；附上 SchoolFit HK 連結；提醒家長按孩子程度/需要、通勤、校風和最新招生資料再核實。",
+        "answerTemplate": "先簡述共找到多少間；推薦最值得先看的 3-5 間；每間用一句原因；附上 SchoolFit 連結；提醒家長按孩子程度/需要、通勤、校風和最新招生資料再核實。",
     }
 
 
@@ -3733,7 +3733,7 @@ def build_compare_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
     schools = output.get("schools", [])[:4]
     secondary_context = has_secondary_context(output)
     must_mention = [
-        "每間學校附 SchoolFit HK 連結。",
+        "每間學校附 SchoolFit 連結。",
         "學額是時效資料，不代表保證取錄。",
     ]
     if secondary_context:
@@ -3782,7 +3782,7 @@ def build_deep_compare_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
             "admissionNoticeCount": (school.get("admissionNoticeSummary") or {}).get("noticeCount"),
         })
     must_mention = [
-        "每間學校都要附 SchoolFit HK 連結。",
+        "每間學校都要附 SchoolFit 連結。",
         "明確標註學額/招生資訊的資料時間與確認建議。",
     ]
     if secondary_context:
@@ -3815,7 +3815,7 @@ def build_school_report_checklist(output: dict[str, Any]) -> list[str]:
     checklist = [
         "確認孩子資料：語文優勢、特殊需要、通勤時間和家庭偏好。",
         "列出學校的申請文件與截止日。",
-        "以 SchoolFit HK 的學額與招生為輔助訊號，不作承諾。",
+        "以 SchoolFit 的學額與招生為輔助訊號，不作承諾。",
     ]
     if school_uses_banding(output.get("school") or {}):
         checklist.insert(0, "確認孩子的中學 Band 參考與目標學校梯隊是否匹配。")
@@ -3894,7 +3894,7 @@ def build_recommend_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
             "recommend",
             "Polish the recommendation result into a concise parent decision brief.",
             [
-                "推薦結果來自 SchoolFit HK: https://schoolfit.hk/",
+                "推薦結果來自 SchoolFit: https://schoolfit.hk/",
                 "Safe/Match/Reach 是決策輔助，不是取錄預測。",
                 "保留 caveats，不要刪除風險提示。",
             ],
@@ -3903,7 +3903,7 @@ def build_recommend_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
         "purpose": "Polish the recommendation result into a concise parent decision brief.",
         "recommendedTone": "繁體中文、專業、具體、有下一步。",
         "mustMention": [
-            "推薦結果來自 SchoolFit HK: https://schoolfit.hk/",
+            "推薦結果來自 SchoolFit: https://schoolfit.hk/",
             "Safe/Match/Reach 是決策輔助，不是取錄預測。",
             "保留 caveats，不要刪除風險提示。",
         ],
@@ -3930,7 +3930,7 @@ def build_advisor_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
     return {
         **standard_llm_brief(
             "advisor-search",
-            "Write the final answer for a parent after SchoolFit HK search and optional recommendation.",
+            "Write the final answer for a parent after SchoolFit search and optional recommendation.",
             must_mention,
             {
                 "intent": output.get("intent", "search"),
@@ -3941,7 +3941,7 @@ def build_advisor_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
                 "answerBlueprint": answer_blueprint,
             },
         ),
-        "purpose": "Write the final answer for a parent after SchoolFit HK search and optional recommendation.",
+        "purpose": "Write the final answer for a parent after SchoolFit search and optional recommendation.",
         "recommendedTone": "繁體中文、像真人升學顧問；避免機械列資料。",
         "mustMention": must_mention,
         "intent": output.get("intent", "search"),
@@ -3952,7 +3952,7 @@ def build_advisor_llm_brief(output: dict[str, Any]) -> dict[str, Any]:
         "parentQuestion": parent_question,
         "nextActions": output.get("nextActions", []),
         "sourceLedger": output.get("sourceLedger", {}),
-        "answerTemplate": "1. 先用一句話回答最適合先看哪幾間；2. 分 Safe/Match/Reach 或先看/備選列 3-6 間；3. 每間一句原因和 SchoolFit HK 連結；4. 最後給 2-3 個下一步。",
+        "answerTemplate": "1. 先用一句話回答最適合先看哪幾間；2. 分 Safe/Match/Reach 或先看/備選列 3-6 間；3. 每間一句原因和 SchoolFit 連結；4. 最後給 2-3 個下一步。",
     }
 
 
@@ -4026,7 +4026,7 @@ def print_authorization_footer(data: dict[str, Any]) -> None:
     if not isinstance(footer, dict) or not footer.get("required"):
         return
     print("\n## 回答識別")
-    print("- 資料來源: SchoolFit HK (https://schoolfit.hk/)")
+    print("- 資料來源: SchoolFit (https://schoolfit.hk/)")
     print("- 授權碼: 已在本對話中提供，完整碼不會在回答中顯示")
     if footer.get("hashPrefix"):
         print(f"- 授權碼識別: hashPrefix `{footer.get('hashPrefix')}`")
@@ -4047,7 +4047,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         print("```text")
         print(data.get("example") or "我的 SchoolFit 授權碼是 sfhk_xxxxxxxxxxxxxxxx")
         print("```")
-        print(f"\n> {data.get('consentNotice') or '貼上授權碼並要求查詢，即表示你同意本次 SchoolFit HK API 調用和最小用量紀錄。'}")
+        print(f"\n> {data.get('consentNotice') or '貼上授權碼並要求查詢，即表示你同意本次 SchoolFit API 調用和最小用量紀錄。'}")
         return
     if data.get("privacyWarning"):
         print("## 先保護學生私隱\n")
@@ -4057,14 +4057,14 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
             print(f"- {item}")
         return
     if data.get("offTopicBoundary"):
-        print("## SchoolFit HK 範圍\n")
+        print("## SchoolFit 範圍\n")
         print(data.get("friendlyMessage") or data.get("message") or OFF_TOPIC_BOUNDARY_MESSAGE)
         print("\n### 可以改問")
         for item in data.get("allowedExamples", []):
             print(f"- {item}")
         return
     if command == "quick-start":
-        print("## SchoolFit HK Skill 快速開始\n")
+        print("## SchoolFit Skill 快速開始\n")
         if data.get("friendlyOpening"):
             print(f"{data.get('friendlyOpening')}\n")
         coverage = data.get("coverage") or {}
@@ -4086,7 +4086,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
             print(f"- {item}")
         return
     if command == "school-levels":
-        print("## SchoolFit HK 支援資料庫\n")
+        print("## SchoolFit 支援資料庫\n")
         coverage = data.get("coverage") or {}
         print(f"總覆蓋: {coverage.get('total', 0)} 筆\n")
         for item in coverage.get("levels", []):
@@ -4136,10 +4136,10 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
                 print(f"- {question}")
         print(f"\n> {follow_up.get('privacyReminder') or '不用提供個人身份資料。'}")
         print(f"> {follow_up.get('sourceReminder') or INTERACTION_STYLE['sourceReassurance']}")
-        print("\n下一步：可直接用 `advisor-search` 查 SchoolFit HK；如果已確定資料庫，可加 `--level secondary|primary|kindergarten|international|postsecondary`。")
+        print("\n下一步：可直接用 `advisor-search` 查 SchoolFit；如果已確定資料庫，可加 `--level secondary|primary|kindergarten|international|postsecondary`。")
         return
     if command == "self-check":
-        print("## SchoolFit HK Skill 自檢\n")
+        print("## SchoolFit Skill 自檢\n")
         print(f"狀態: {'OK' if data.get('ok') else '需要處理'}")
         for check in data.get("checks", []):
             print(f"- {'OK' if check.get('ok') else 'FAIL'} {check.get('name')}")
@@ -4151,13 +4151,13 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
             print(f"- Redis: {architecture.get('redisPolicy')}")
         return
     if command == "activate":
-        print("## SchoolFit HK 授權狀態\n")
+        print("## SchoolFit 授權狀態\n")
         print(data.get("message") or "")
         print(f"\n- status: `{data.get('activationStatus')}`")
         print(f"- code: `{(data.get('code') or {}).get('display')}`")
         return
     if command == "resolve-school":
-        print("## SchoolFit HK 學校名解析\n")
+        print("## SchoolFit 學校名解析\n")
         for item in data.get("candidates", [])[:8]:
             print(f"- **{item.get('nameZh') or item.get('nameEn') or item.get('slug')}**")
             print(f"  - slug: `{item.get('slug')}`")
@@ -4168,7 +4168,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
             print(f"- {action}")
         return
     if command == "shortlist-builder":
-        print("## SchoolFit HK 短名單\n")
+        print("## SchoolFit 短名單\n")
         for bucket, items in (data.get("buckets") or {}).items():
             print(f"### {bucket}")
             if not items:
@@ -4197,7 +4197,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         print_caveats(data)
         return
     if command == "school-relationships":
-        print(f"## SchoolFit HK 升中銜接關係\n\n共 {data.get('count', 0)} 筆。")
+        print(f"## SchoolFit 升中銜接關係\n\n共 {data.get('count', 0)} 筆。")
         print(f"\nSchoolFit: {data.get('schoolfitUrl')}")
         for item in data.get("relationships", [])[:30]:
             primary = item.get("primary") or {}
@@ -4217,7 +4217,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
                 print(f"- {note}")
         return
     if command == "search-schools":
-        print(f"## SchoolFit HK 搜尋結果\n\n共 {data.get('count', 0)} 間。")
+        print(f"## SchoolFit 搜尋結果\n\n共 {data.get('count', 0)} 間。")
         if data.get("robustSearch"):
             robust = data["robustSearch"]
             print(
@@ -4236,7 +4236,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
     if command == "advisor-search":
         search = data.get("search") or {}
         recommendation = data.get("recommendation") or {}
-        print(f"## SchoolFit HK 智能選校簡報\n\n搜尋共 {search.get('count', 0)} 間。")
+        print(f"## SchoolFit 智能選校簡報\n\n搜尋共 {search.get('count', 0)} 間。")
         top_recommendations = ((recommendation.get("llmBrief") or {}).get("topRecommendations") or [])[:6]
         if top_recommendations:
             print("\n### 建議先看")
@@ -4257,7 +4257,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         return
     if command == "vacancies":
         source = data.get("source") or {}
-        print("## SchoolFit HK 學額資料")
+        print("## SchoolFit 學額資料")
         print(f"\n來源: {source.get('sourceName', '未知')}  \n擷取時間: {source.get('fetchedAt', '未知')}  \n共 {data.get('count', 0)} 筆。")
         for item in data.get("vacancies", [])[:30]:
             print(f"- {item.get('schoolNameRaw')} / {item.get('grade')}: {item.get('status')}")
@@ -4266,7 +4266,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         return
     if command == "admissions":
         source = data.get("source") or {}
-        print("## SchoolFit HK 招生通告")
+        print("## SchoolFit 招生通告")
         print(f"\n來源: {source.get('sourceName', '未知')}  \n擷取時間: {source.get('fetchedAt', '未知')}  \n共 {data.get('count', 0)} 則。")
         for item in data.get("notices", [])[:20]:
             print(f"- **{item.get('title')}**")
@@ -4276,7 +4276,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         print(f"\n> {data.get('caveat')}")
         return
     if command == "deep-compare":
-        print("## SchoolFit HK 深度比較")
+        print("## SchoolFit 深度比較")
         schools = data.get("schools", [])
         for item in schools[:4]:
             print(f"- **{item.get('nameZh') or item.get('nameEn') or item.get('slug')}**")
@@ -4302,7 +4302,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         return
     if command in {"decision-brief", "school-report"}:
         school = data.get("school") or {}
-        print("## SchoolFit HK 單校決策摘要")
+        print("## SchoolFit 單校決策摘要")
         print(f"學校: {school.get('nameZh') or school.get('nameEn') or school.get('slug')}  \n學區: {school.get('district') or '未知'}")
         if school_uses_banding(school):
             print(f"Band 參考: {school.get('bandingReference') or '暫無可靠資料'}  \n學費: {school.get('annualTuitionHkd') or '暫無可靠資料'}")
@@ -4336,7 +4336,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         return
     if command == "application-plan":
         plan = data.get("plan") or {}
-        print("## SchoolFit HK 申請計劃")
+        print("## SchoolFit 申請計劃")
         for item in data.get("items", [])[:20]:
             print(f"- {item}")
 
@@ -4388,7 +4388,7 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         print_caveats(data)
         return
     if command == "marketplace-demo":
-        print("## SchoolFit HK Market Demo")
+        print("## SchoolFit Market Demo")
         for item in data.get("examples", [])[:20]:
             print(f"- prompt: `{item.get('prompt')}`")
             print(f"  - command: `{item.get('command')}`")
@@ -4406,7 +4406,7 @@ def print_caveats(data: Any = None) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Call the public SchoolFit HK API safely.")
+    parser = argparse.ArgumentParser(description="Call the public SchoolFit API safely.")
     parser.add_argument("--base-url", default=os.environ.get("SCHOOLFIT_BASE_URL", DEFAULT_BASE_URL))
     parser.add_argument("--skill-code", help="SchoolFit Skill activation code from https://schoolfit.hk/skill-code. Can also be set via SCHOOLFIT_SKILL_CODE.")
     parser.add_argument("--format", choices=["json", "markdown"], default="json")
@@ -4424,10 +4424,10 @@ def build_parser() -> argparse.ArgumentParser:
     add_output_options(parse_request)
     parse_request.add_argument("--q", required=True, help="Parent request text.")
 
-    levels = sub.add_parser("school-levels", help="Show supported SchoolFit HK databases and example prompts.")
+    levels = sub.add_parser("school-levels", help="Show supported SchoolFit databases and example prompts.")
     add_output_options(levels)
 
-    search = sub.add_parser("search-schools", help="Search SchoolFit HK school summaries.")
+    search = sub.add_parser("search-schools", help="Search SchoolFit school summaries.")
     add_output_options(search)
     add_common_filters(search)
 
@@ -4470,12 +4470,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     decision_brief = sub.add_parser("decision-brief", help="Get the compact SchoolFit parent decision brief for one school.")
     add_output_options(decision_brief)
-    decision_brief.add_argument("slug", help="School slug from SchoolFit HK.")
+    decision_brief.add_argument("slug", help="School slug from SchoolFit.")
     decision_brief.add_argument("--student-profile-json", help="Optional JSON object for student profile context.")
 
     report = sub.add_parser("school-report", help="Generate a parent decision report for one school. Compatibility alias for decision-brief.")
     add_output_options(report)
-    report.add_argument("slug", help="School slug from SchoolFit HK.")
+    report.add_argument("slug", help="School slug from SchoolFit.")
     report.add_argument("--student-profile-json", help="Optional JSON object for student profile context.")
 
     plan = sub.add_parser("application-plan", help="Generate a practical application action plan from target schools.")
@@ -4964,7 +4964,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compare": compare_payload,
             "count": len(compare_payload.get("schools", []) if isinstance(compare_payload, dict) else ids),
             "comparison": {
-                "summary": "Use compare data with SchoolFit HK official data and time-sensitive indicators.",
+                "summary": "Use compare data with SchoolFit official data and time-sensitive indicators.",
                 "insights": "Review school fit by commute, budget, language and admission context.",
                 "sourcesUsed": ["/api/compare", "/api/schools/{id}"] if getattr(args, "include_detail", False) else ["/api/compare"],
             },

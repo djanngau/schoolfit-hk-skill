@@ -1,6 +1,6 @@
-# SchoolFitSkill Release Notes
+# SchoolFit Release Notes
 
-This repository is a SchoolFit HK skill package. It is not deployed through the
+This repository is a SchoolFit skill package. It is not deployed through the
 shared ARK server/Docker flow.
 
 Release path:

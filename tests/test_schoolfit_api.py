@@ -255,7 +255,7 @@ class SchoolFitApiTests(unittest.TestCase):
                     "responseShape": "shortlist",
                 }
             },
-            "sourceLedger": {"officialFacts": [{"name": "SchoolFit HK API"}], "assumptions": ["compact api"]},
+            "sourceLedger": {"officialFacts": [{"name": "SchoolFit API"}], "assumptions": ["compact api"]},
         }
         with mock.patch.object(schoolfit_api, "request_json", return_value=payload) as request:
             output = schoolfit_api.run(args)
