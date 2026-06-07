@@ -51,7 +51,9 @@ def main() -> int:
     checks.append(("no_packaged_maintenance_commands", "self-check" not in skill and "marketplace-demo" not in script))
     checks.append(("no_removed_commands_in_public_docs", "self-check" not in public_text and "marketplace-demo" not in public_text))
     checks.append(("query_disclosure_present", "Query disclosure" in skill and "https://schoolfit.hk/api/..." in skill))
-    checks.append(("clawhubignore_excludes_examples", "examples/" in clawhubignore.splitlines()))
+    clawhubignore_lines = set(clawhubignore.splitlines())
+    checks.append(("clawhubignore_excludes_examples", "examples/" in clawhubignore_lines))
+    checks.append(("clawhubignore_excludes_python_cache", "scripts/__pycache__/" in clawhubignore_lines and "*.pyc" in clawhubignore_lines))
     checks.append(("helper_raw_preview_size", SCRIPT.stat().st_size <= MAX_CLAWHUB_RAW_FILE_BYTES))
 
     ok = all(passed for _, passed in checks)
