@@ -1,7 +1,7 @@
 ---
 name: schoolfit
 description: Use for Hong Kong school admissions, school selection, secondary school, primary school, kindergarten, international school, and postsecondary advisory workflows with SchoolFit.
-version: 1.2.0
+version: 1.2.1
 metadata:
   openclaw:
     homepage: https://github.com/djanngau/schoolfit-skill
