@@ -1,11 +1,11 @@
 ---
-name: schoolfit-hk
+name: schoolfit
 description: Use when helping Hong Kong families search, compare, shortlist, or assess schools across SchoolFit HK's secondary, primary, kindergarten, international, and postsecondary databases, including admissions notices, EDB vacancy signals, Band references where applicable, and conservative school-selection advice.
-version: 1.1.1
+version: 1.1.3
 metadata:
   openclaw:
-    homepage: https://github.com/djanngau/schoolfit-hk-skill
-    skillKey: schoolfit-hk
+    homepage: https://github.com/djanngau/schoolfit-skill
+    skillKey: schoolfit
     default_enabled: true
     requires:
       bins:
@@ -48,9 +48,10 @@ The skill must not read local Edu project databases, Prisma files, snapshots, co
 - Never call `/api/agent/chat` in v1. It can consume LLM resources and create persistent sessions; it is reserved for a future paid/API-gated version.
 - After installation, the first user-facing response must ask the user to open `https://schoolfit.hk/skill-code`, generate an authorization code, copy it, and paste it back into the same chat window for the Agent. Do not ask the user to configure a terminal unless they explicitly want CLI usage.
 - Show the authorization page as exactly `https://schoolfit.hk/skill-code`. If a marketplace, chat app, or copied link adds query strings, hash fragments, tracking parameters, or any path suffix after `/skill-code`, strip them before asking the user to open the page.
-- First use requires that trial activation code. Tell users to paste it only into the trusted one-to-one Agent chat they are using for SchoolFit. After the user sends it in chat, the Agent should pass it to the helper as `--skill-code` or `SCHOOLFIT_SKILL_CODE`; the helper sends it as `X-SchoolFit-Skill-Code`.
+- First use requires that trial activation code. Tell users to paste it only into the trusted one-to-one Agent chat they are using for SchoolFit. Before they paste it, explicitly warn that the code is sensitive session material and should not be posted in public/multi-user chats, screenshots, logs, issue trackers, README files, commits, or marketplace material. After the user sends it in chat, the Agent should pass it to the helper as `--skill-code` or `SCHOOLFIT_SKILL_CODE`; the helper sends it as `X-SchoolFit-Skill-Code`.
 - The code is a trial-run authorization and telemetry key, not a password, payment token, or student identity.
 - Treat the code as sensitive session material: do not paste it into public/multi-user chats, screenshots, issue trackers, logs, README files, examples, commits, or marketplace submissions.
+- Telemetry disclosure must be visible before first use: when a non-reserved `sfhk_...` code is used, the helper sends minimal usage telemetry to SchoolFit HK: command, endpoint, traceId, status/error, latency, activationStatus, skillVersion, and authorization-code hashPrefix. Telemetry does not include the full code, student name, HKID, phone, address, or report-card content. If the user is not comfortable with this, they should not paste the code or run a query.
 - Do not persist the user's authorization code to disk. Keep it only in the active conversation context or an explicit runtime environment variable for that run.
 - Do not echo the full authorization code in parent-facing final answers. If a trace is needed, use only the helper's `skillCodeHashPrefix`/`finalAnswerFooter.hashPrefix`.
 - Do not ask for or store student full name, HKID, phone number, address, report-card PDF, or other personally identifiable data.
@@ -71,7 +72,7 @@ Use `<base_dir>` as the directory that contains this `SKILL.md`.
 After installation, if no authorization code has been provided yet, say this in the chat window before doing any search:
 
 ```text
-請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit 授權碼，複製後只發到這個你信任的一對一聊天窗口。授權碼不要貼到公開或多人聊天，也不要截圖外傳。我收到後就可以幫你查中學、小學、幼稚園、國際學校和專上教育資料，做比較、推薦和申請計劃；完整授權碼不會出現在最終回答。
+請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit 授權碼，複製後只發到這個你信任的一對一聊天窗口。授權碼屬於敏感會話材料，不要貼到公開或多人聊天，也不要截圖外傳或寫入日誌。我收到後就可以幫你查中學、小學、幼稚園、國際學校和專上教育資料，做比較、推薦和申請計劃；完整授權碼不會出現在最終回答。使用授權碼查詢時，helper 會向 SchoolFit HK 傳送最小用量紀錄（command、endpoint、traceId、status/error、latency、activationStatus、skillVersion、授權碼 hashPrefix），不包含完整授權碼或學生個人資料；如不同意，請不要貼碼或查詢。
 ```
 
 如果 URL 後面帶有 `?`、`#`、tracking string 或其他路徑，先刪到 `https://schoolfit.hk/skill-code` 再打開。
@@ -353,10 +354,10 @@ Use `admissions` for application forms, deadlines, S1 admission, transfer admiss
 Install examples after GitHub publication:
 
 ```text
-/skill install clawhub:schoolfit-hk
-ark skill install clawhub:schoolfit-hk
-/skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
-ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
+/skill install clawhub:schoolfit
+ark skill install clawhub:schoolfit
+/skill install djanngau/schoolfit-skill#skills/schoolfit-hk
+ark skill install djanngau/schoolfit-skill#skills/schoolfit-hk
 ```
 
 Marketplace summary:

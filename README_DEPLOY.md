@@ -6,7 +6,7 @@ shared ARK server/Docker flow.
 Release path:
 
 - Commit and push this repository to GitHub.
-- Publish or verify the `schoolfit-hk` package in ClawHub.
+- Publish or verify the `schoolfit` package in ClawHub.
 - Use skills.sh and direct GitHub install only as fallback discovery paths.
 - Do not add server `.env`, GHCR, `ops/deploy.sh`, or container healthcheck
   requirements here unless the project is explicitly converted into a service.

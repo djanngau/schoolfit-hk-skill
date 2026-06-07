@@ -1,6 +1,6 @@
 # SchoolFit HK Skill for OpenClaw
 
-Version: `1.1.1`
+Version: `1.1.3`
 
 SchoolFit HK lets OpenClaw, ArkAgent, Claude Code and compatible agents help Hong Kong families search, compare, shortlist and plan school applications through the public [SchoolFit HK](https://schoolfit.hk) Skill API.
 
@@ -21,25 +21,25 @@ It is designed for parent-facing school advice, not raw data dumping: answers sh
 ClawHub is the preferred marketplace for OpenClaw-native install, versioning, moderation and release checks.
 
 ```text
-openclaw skills install schoolfit-hk
-clawhub install schoolfit-hk
-/skill install clawhub:schoolfit-hk
-ark skill install clawhub:schoolfit-hk
+openclaw skills install schoolfit
+clawhub install schoolfit
+/skill install clawhub:schoolfit
+ark skill install clawhub:schoolfit
 ```
 
-ClawHub listing: [clawhub.ai/djanngau/schoolfit-hk](https://clawhub.ai/djanngau/schoolfit-hk)
+ClawHub listing: [clawhub.ai/djanngau/schoolfit](https://clawhub.ai/djanngau/schoolfit)
 
 GitHub direct install remains available when a user or agent needs the exact source path:
 
 ```text
-/skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
-ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
+/skill install djanngau/schoolfit-skill#skills/schoolfit-hk
+ark skill install djanngau/schoolfit-skill#skills/schoolfit-hk
 ```
 
 skills.sh can also discover the GitHub-backed skill:
 
 ```text
-npx skills add djanngau/schoolfit-hk-skill
+npx skills add djanngau/schoolfit-skill
 ```
 
 ## First Run
@@ -47,10 +47,10 @@ npx skills add djanngau/schoolfit-hk-skill
 After installation, the Agent should ask the user to get a SchoolFit authorization code:
 
 ```text
-請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit 授權碼，複製後只發到這個你信任的一對一聊天窗口。授權碼不要貼到公開或多人聊天，也不要截圖外傳。我收到後就可以幫你查中學、小學、幼稚園、國際學校和專上教育資料，做比較、推薦和申請計劃；完整授權碼不會出現在最終回答。
+請先打開 https://schoolfit.hk/skill-code 取得 SchoolFit 授權碼，複製後只發到這個你信任的一對一聊天窗口。授權碼屬於敏感會話材料，不要貼到公開或多人聊天，也不要截圖外傳或寫入日誌。我收到後就可以幫你查中學、小學、幼稚園、國際學校和專上教育資料，做比較、推薦和申請計劃；完整授權碼不會出現在最終回答。使用授權碼查詢時，helper 會向 SchoolFit HK 傳送最小用量紀錄（command、endpoint、traceId、status/error、latency、activationStatus、skillVersion、授權碼 hashPrefix），不包含完整授權碼或學生個人資料；如不同意，請不要貼碼或查詢。
 ```
 
-When the user pastes a code such as `sfhk_...`, keep it only in the active chat context and pass it to helper calls as `--skill-code`. Do not write real user codes into files, logs, examples, commits, marketplace material, or parent-facing final answers.
+When the user pastes a code such as `sfhk_...`, keep it only in the active chat context and pass it to helper calls as `--skill-code`. Do not write real user codes into files, logs, examples, commits, marketplace material, or parent-facing final answers. Make the telemetry disclosure visible before first use: non-reserved codes send minimal usage telemetry to SchoolFit HK, including command, endpoint, traceId, status/error, latency, activationStatus, skillVersion, and code hashPrefix, but not the full code or student personal data.
 
 Always show the authorization page as exactly `https://schoolfit.hk/skill-code`. If a copied link contains query strings, hash fragments, tracking parameters, or any path suffix after `/skill-code`, normalize it back to the canonical URL.
 
@@ -148,6 +148,7 @@ Use compact Skill API payloads by default. Add `--verbose` only when a tester or
 - Does not call `/api/agent/chat` in v1, avoiding LLM cost and persistent session creation.
 - Blocks non-school/model-probing/token-wasting prompts locally before any SchoolFit API or model API call.
 - Sends `X-SchoolFit-Skill-Code`, `X-SchoolFit-Skill-Version` and trace metadata for activation, rate limiting and anonymous telemetry.
+- Shows a first-run telemetry disclosure before asking the user to paste the code.
 - Treats the authorization code as a trial-run API/telemetry key, not a payment token, password or student identity.
 - Does not persist authorization codes locally. The deprecated `setup-code` command validates a code for the current run only and returns `stored: false`.
 - Does not echo the full `sfhk_...` code in parent-facing final answers.
@@ -159,9 +160,9 @@ SchoolFit HK helps agents search, compare, shortlist and recommend Hong Kong sch
 
 ## Release Notes
 
-- Current ClawHub version: `1.1.1`
-- ClawHub slug: `schoolfit-hk`
+- Current ClawHub version: `1.1.3`
+- ClawHub slug: `schoolfit`
 - Owner: `djanngau`
-- Repository: [github.com/djanngau/schoolfit-hk-skill](https://github.com/djanngau/schoolfit-hk-skill)
+- Repository: [github.com/djanngau/schoolfit-skill](https://github.com/djanngau/schoolfit-skill)
 - Primary marketplace: ClawHub
 - Fallback discovery: skills.sh, then GitHub direct install

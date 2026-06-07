@@ -23,8 +23,8 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://schoolfit.hk"
 ALLOWED_HOSTS = {"schoolfit.hk"}
-SKILL_VERSION = "1.1.1"
-SKILL_VERSION_HEADER_VERSION = "1.1.1"
+SKILL_VERSION = "1.1.3"
+SKILL_VERSION_HEADER_VERSION = "1.1.3"
 MAX_COMPARE_IDS = 4
 ROBUST_SEARCH_PAGE_SIZE = 1000
 SCHOOLFIT_SKILL_CLIENT_CODE = "schoolfit-openclaw-v1-reserved"
@@ -44,6 +44,15 @@ SKILL_ACTIVATION_HINT = (
 )
 SKILL_USAGE_EVENT = "command_run"
 SKILL_TELEMETRY_ENDPOINT = "/api/skill/telemetry"
+SKILL_CODE_SAFETY_WARNING = (
+    "授權碼屬於敏感會話材料。只在你信任的一對一 Agent 聊天中貼上；不要貼到公開或多人聊天、"
+    "不要截圖外傳、不要寫入文件、日誌、issue、README、commit 或 marketplace material。"
+)
+SKILL_TELEMETRY_DISCLOSURE = (
+    "使用非保留授權碼查詢時，helper 會向 SchoolFit HK 傳送最小用量紀錄：command、endpoint、traceId、"
+    "status/error、latency、activationStatus、skillVersion 和授權碼 hashPrefix。遙測不包含完整 sfhk_ 授權碼、"
+    "學生姓名、HKID、電話、地址或成績表內容；如不同意，請不要貼授權碼或發起查詢。"
+)
 SKILL_CODE_HASH_PREFIX_LEN = 8
 PUBLIC_COMMANDS = {"quick-start", "parse-parent-request", "school-levels", "marketplace-demo", "self-check"}
 SKILL_CODE_RE = re.compile(r"\bsfhk_[A-Za-z0-9_-]{8,}\b")
@@ -419,7 +428,9 @@ def activation_required_output(command: str, trace_id: TraceId, code: str | None
             "step4": "之後直接問：幫我找沙田 Band 1 英文男女校，或查小學、幼稚園、國際學校、專上教育選項。",
         },
         "example": "我的 SchoolFit 授權碼是 sfhk_xxxxxxxxxxxxxxxx",
-        "sensitiveCodeWarning": "授權碼是試用識別和匿名用量統計 key；不要公開分享、截圖外傳、寫入文件、日誌或 commit。",
+        "sensitiveCodeWarning": SKILL_CODE_SAFETY_WARNING,
+        "telemetryDisclosure": SKILL_TELEMETRY_DISCLOSURE,
+        "consentNotice": "貼上授權碼並要求查詢，即表示你同意本次 SchoolFit HK API 調用和上述最小用量紀錄。",
         "skillVersion": SKILL_VERSION,
         "traceId": trace_id,
         "schoolfitUrl": DEFAULT_BASE_URL,
@@ -450,6 +461,9 @@ def activation_result_output(code: str | None, activation_status: ActivationMode
         },
         "activationUrl": canonical_activation_url(),
         "activationUrlPolicy": activation_url_policy(),
+        "sensitiveCodeWarning": SKILL_CODE_SAFETY_WARNING,
+        "telemetryDisclosure": SKILL_TELEMETRY_DISCLOSURE,
+        "consentNotice": "後續 SchoolFit 查詢會使用此授權碼調用 SchoolFit HK API，並產生上述最小用量紀錄。",
         "finalAnswerFooter": footer,
         "skillVersion": SKILL_VERSION,
         "traceId": trace_id,
@@ -465,6 +479,9 @@ def attach_runtime_metadata(output: dict[str, Any], *, activation_status: Activa
     output["schoolfitUrl"] = output.get("schoolfitUrl") or DEFAULT_BASE_URL
     output["skillCodeHashPrefix"] = code_hash_prefix(code)
     output["finalAnswerFooter"] = footer
+    if is_user_skill_code(code):
+        output["telemetryDisclosure"] = SKILL_TELEMETRY_DISCLOSURE
+        output["sensitiveCodeWarning"] = SKILL_CODE_SAFETY_WARNING
     apply_authorization_policy_to_briefs(output, footer)
     return output
 
@@ -2600,6 +2617,9 @@ def quick_start_output(trace_id: TraceId) -> dict[str, Any]:
         "activationUrl": canonical_activation_url(),
         "activationUrlPolicy": activation_url_policy(),
         "message": "安裝完成後，請先取得 SchoolFit 授權碼，並只貼回你信任的一對一 Agent 聊天窗口。",
+        "sensitiveCodeWarning": SKILL_CODE_SAFETY_WARNING,
+        "telemetryDisclosure": SKILL_TELEMETRY_DISCLOSURE,
+        "consentNotice": "貼上授權碼並要求查詢，即表示你同意本次 SchoolFit HK API 調用和上述最小用量紀錄。",
         "interactionStyle": INTERACTION_STYLE,
         "friendlyOpening": "你可以直接用日常說法問我，例如想看哪個區、哪類學校、重視英文環境或學費，我會先整理條件再查。",
         "coverage": {
@@ -2686,12 +2706,12 @@ def marketplace_demo_payload() -> dict[str, Any]:
             "primaryMarketplace": "ClawHub",
             "fallbackOrder": ["ClawHub", "skills.sh", "GitHub"],
             "installCommands": [
-                "openclaw skills install schoolfit-hk",
-                "clawhub install schoolfit-hk",
-                "/skill install clawhub:schoolfit-hk",
-                "ark skill install clawhub:schoolfit-hk",
-                "/skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk",
-                "ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk",
+                "openclaw skills install schoolfit",
+                "clawhub install schoolfit",
+                "/skill install clawhub:schoolfit",
+                "ark skill install clawhub:schoolfit",
+                "/skill install djanngau/schoolfit-skill#skills/schoolfit-hk",
+                "ark skill install djanngau/schoolfit-skill#skills/schoolfit-hk",
             ],
             "notes": [
                 "Use ClawHub first for OpenClaw-native discovery, versioning, moderation and inspect flows.",
@@ -4018,12 +4038,16 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
         print("## 先取一個 SchoolFit 授權碼\n")
         print("我可以幫你查中學、小學、幼稚園、國際學校和專上教育資料。第一次使用前，請先打開 https://schoolfit.hk/skill-code 取得授權碼，然後直接貼回這個聊天窗口。")
         print("\n如果打開後找不到頁面，請確認網址只保留到 `/skill-code`，刪除後面的 `?`、`#` 或其他字串。")
+        print("\n### 安全提醒")
+        print(data.get("sensitiveCodeWarning") or SKILL_CODE_SAFETY_WARNING)
+        print("\n### 用量紀錄")
+        print(data.get("telemetryDisclosure") or SKILL_TELEMETRY_DISCLOSURE)
         print("\n收到後我會直接幫你查，不需要你操作命令行。")
         print("\n### 你可以這樣發")
         print("```text")
         print(data.get("example") or "我的 SchoolFit 授權碼是 sfhk_xxxxxxxxxxxxxxxx")
         print("```")
-        print("\n> 授權碼只作試運行識別和匿名用量統計，不是付款密碼，也不代表學生身份。")
+        print(f"\n> {data.get('consentNotice') or '貼上授權碼並要求查詢，即表示你同意本次 SchoolFit HK API 調用和最小用量紀錄。'}")
         return
     if data.get("privacyWarning"):
         print("## 先保護學生私隱\n")
@@ -4051,6 +4075,12 @@ def print_markdown(command: str, data: dict[str, Any]) -> None:
             print("")
         for index, step in enumerate(data.get("steps", []), start=1):
             print(f"{index}. **{step.get('label')}**：{step.get('text')}")
+        if data.get("sensitiveCodeWarning"):
+            print(f"\n### 安全提醒\n{data.get('sensitiveCodeWarning')}")
+        if data.get("telemetryDisclosure"):
+            print(f"\n### 用量紀錄\n{data.get('telemetryDisclosure')}")
+        if data.get("consentNotice"):
+            print(f"\n> {data.get('consentNotice')}")
         print("\n### 示例問題")
         for item in data.get("examples", []):
             print(f"- {item}")

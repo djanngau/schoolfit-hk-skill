@@ -604,7 +604,24 @@ class SchoolFitApiTests(unittest.TestCase):
             output = schoolfit_api.run(args)
         self.assertFalse(output["stored"])
         self.assertIn("disabled", output["persistencePolicy"])
+        self.assertIn("telemetryDisclosure", output["activationResult"])
+        self.assertIn("hashPrefix", output["activationResult"]["telemetryDisclosure"])
         self.assertEqual(request.call_args.kwargs["skill_code"], "sfhk_setup_code")
+
+    def test_first_run_outputs_visible_code_and_telemetry_warnings(self):
+        output = schoolfit_api.run(schoolfit_api.build_parser().parse_args(["quick-start"]))
+        self.assertIn("sensitiveCodeWarning", output)
+        self.assertIn("telemetryDisclosure", output)
+        self.assertIn("不要貼到公開", output["sensitiveCodeWarning"])
+        self.assertIn("hashPrefix", output["telemetryDisclosure"])
+
+        buffer = StringIO()
+        with redirect_stdout(buffer):
+            schoolfit_api.print_markdown("quick-start", output)
+        rendered = buffer.getvalue()
+        self.assertIn("### 安全提醒", rendered)
+        self.assertIn("### 用量紀錄", rendered)
+        self.assertIn("hashPrefix", rendered)
 
     def test_telemetry_failure_does_not_raise(self):
         with mock.patch.object(schoolfit_api, "request_json", side_effect=schoolfit_api.SchoolFitError("boom")):
@@ -1470,7 +1487,7 @@ class SchoolFitApiTests(unittest.TestCase):
         policy = output["distributionPolicy"]
         self.assertEqual(policy["primaryMarketplace"], "ClawHub")
         self.assertEqual(policy["fallbackOrder"], ["ClawHub", "skills.sh", "GitHub"])
-        self.assertIn("clawhub install schoolfit-hk", policy["installCommands"])
+        self.assertIn("clawhub install schoolfit", policy["installCommands"])
 
     def test_school_levels_is_public_and_lists_all_databases(self):
         args = schoolfit_api.build_parser().parse_args([
@@ -2441,6 +2458,8 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertEqual(footer["hashPrefix"], schoolfit_api.code_hash_prefix("sfhk_visible_code_123456"))
         self.assertTrue(footer["doNotPersist"])
         self.assertTrue(footer["doNotExposeExactCode"])
+        self.assertIn("telemetryDisclosure", output)
+        self.assertIn("hashPrefix", output["telemetryDisclosure"])
         policy = output["llmBrief"]["agentHandoff"]["authorizationCodePolicy"]
         self.assertTrue(policy["required"])
         self.assertIsNone(policy["authorizationCode"])

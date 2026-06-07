@@ -6,11 +6,11 @@ SchoolFit HK
 
 ## Repository
 
-https://github.com/djanngau/schoolfit-hk-skill
+https://github.com/djanngau/schoolfit-skill
 
 ## ClawHub Listing
 
-https://clawhub.ai/djanngau/schoolfit-hk
+https://clawhub.ai/djanngau/schoolfit
 
 ## Marketplace Priority
 
@@ -27,7 +27,7 @@ Do not describe the default SchoolFit HK skill marketplace as SkillHub or `skill
 ## Install Path
 
 ```text
-djanngau/schoolfit-hk-skill#skills/schoolfit-hk
+djanngau/schoolfit-skill#skills/schoolfit-hk
 ```
 
 ## Short Description
@@ -50,9 +50,10 @@ education, hong-kong, school-selection, secondary-school, primary-school, kinder
 
 - Host allowlist is restricted to `schoolfit.hk`.
 - The helper rejects custom schemes, credentials, custom ports, and non-API paths.
-- First use guides the user to `https://schoolfit.hk/skill-code` to generate a trial activation code, then paste it only into the trusted one-to-one Agent chat window.
+- First use guides the user to `https://schoolfit.hk/skill-code` to generate a trial activation code, then paste it only into the trusted one-to-one Agent chat window after a visible safety and telemetry disclosure.
 - Authorization page links must be normalized to exactly `https://schoolfit.hk/skill-code`; strip query strings, hash fragments, tracking strings, and path suffixes before opening.
 - The `X-SchoolFit-Skill-Code` header supports activation, rate limiting and anonymous telemetry; it is not a payment token or student identity, but it is treated as sensitive session material.
+- Telemetry is disclosed before first use: non-reserved codes send minimal usage fields to SchoolFit HK, including command, endpoint, traceId, status/error, latency, activationStatus, skillVersion, and authorization-code hashPrefix. It does not include the full code, student name, HKID, phone, address, or report-card content.
 - Authorization codes are not persisted locally. The deprecated `setup-code` command validates a code for the current run only and returns `stored: false`.
 - Parent-facing final answers must not echo the full `sfhk_...` code; debugging surfaces use only hash prefixes.
 - The v1 skill does not call `/api/agent/chat` to avoid LLM cost and persistent session creation.
@@ -61,20 +62,20 @@ education, hong-kong, school-selection, secondary-school, primary-school, kinder
 ## Suggested Marketplace Commands
 
 ```text
-openclaw skills install schoolfit-hk
-clawhub install schoolfit-hk
-/skill install clawhub:schoolfit-hk
-ark skill install clawhub:schoolfit-hk
-npx skills add djanngau/schoolfit-hk-skill
-/skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
-ark skill install djanngau/schoolfit-hk-skill#skills/schoolfit-hk
+openclaw skills install schoolfit
+clawhub install schoolfit
+/skill install clawhub:schoolfit
+ark skill install clawhub:schoolfit
+npx skills add djanngau/schoolfit-skill
+/skill install djanngau/schoolfit-skill#skills/schoolfit-hk
+ark skill install djanngau/schoolfit-skill#skills/schoolfit-hk
 ```
 
 ## ClawHub Release
 
-- Slug: `schoolfit-hk`
+- Slug: `schoolfit`
 - Owner: `djanngau`
-- Version: `1.1.1`
+- Version: `1.1.3`
 - Moderation: `CLEAN`
 
 ## Smoke Test
