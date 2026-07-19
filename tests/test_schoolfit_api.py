@@ -47,11 +47,14 @@ class SchoolFitApiTests(unittest.TestCase):
             "compare",
             "a,b,c,d,e",
         ])
-        with mock.patch.object(schoolfit_api, "request_json", return_value={"count": 4, "schools": []}) as request:
-            schoolfit_api.run(args)
-        _, _, path = request.call_args.args
-        self.assertEqual(path, "/api/compare")
-        self.assertEqual(request.call_args.kwargs["params"]["ids"], ["a", "b", "c", "d"])
+        with mock.patch.object(schoolfit_api, "request_json", return_value={"school": {}, "vacancy": {}, "admission": {}}) as request:
+            output = schoolfit_api.run(args)
+        self.assertEqual(request.call_count, 4)
+        self.assertEqual(
+            [call.args[2] for call in request.call_args_list],
+            [f"/api/skill/schools/{school_id}/decision-brief" for school_id in "abcd"],
+        )
+        self.assertEqual(output["comparisonMode"], "decision-brief-aggregation")
 
     def test_format_can_appear_after_subcommand(self):
         args = schoolfit_api.build_parser().parse_args([
@@ -146,7 +149,18 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertGreaterEqual(request.call_count, 1)
         self.assertEqual(output["search"]["schools"][0]["schoolfitUrl"], "https://schoolfit.hk/schools/demo-school")
         self.assertEqual(output["recommendation"]["llmBrief"]["topRecommendations"][0]["fitLabel"], "Match")
+        self.assertNotIn("compare", output)
         self.assertIn("llmBrief", output)
+
+    def test_advisor_search_preserves_current_server_next_actions(self):
+        payload = {
+            "search": {"count": 1, "schools": [{"slug": "demo-school", "nameZh": "示例中學"}]},
+            "decisionBriefs": [{"links": {"decisionBriefApiUrl": "/api/example"}}],
+            "nextActions": ["可直接調 decisionBriefApiUrl 取得完整決策摘要。"],
+        }
+        output = schoolfit_api.compact_advisor_search(payload)
+        self.assertEqual(output["nextActions"], payload["nextActions"])
+        self.assertNotIn("compare", output)
 
     def test_source_ledger_exposes_data_architecture_contract(self):
         ledger = schoolfit_api.build_source_ledger()
@@ -189,7 +203,8 @@ class SchoolFitApiTests(unittest.TestCase):
         ])
         payload = {
             "version": "2.0.1",
-            "commands": ["advisor-search", "metadata"],
+            "skillPackage": {"name": "schoolfit", "installCheckCommand": "python3 scripts/schoolfit_api.py self-check"},
+            "commands": ["advisor-search", "self-check", "metadata"],
             "featureFlags": {
                 "searchAdvisorRouteEnabled": True,
                 "googleTotpAdminEnabled": True,
@@ -208,6 +223,8 @@ class SchoolFitApiTests(unittest.TestCase):
         self.assertNotIn("admin", serialized)
         self.assertNotIn("totp", serialized)
         self.assertNotIn("usage", output)
+        self.assertNotIn("installCheckCommand", output["skillPackage"])
+        self.assertNotIn("self-check", output["commands"])
         self.assertEqual(output["featureFlags"], {"searchAdvisorRouteEnabled": True})
         self.assertEqual(output["responseContracts"], {"searchAdvisor": {"defaultMode": "compact"}})
 
@@ -1481,11 +1498,13 @@ class SchoolFitApiTests(unittest.TestCase):
             "--format",
             "json",
         ])
-        with mock.patch.object(schoolfit_api, "request_json", return_value={"count": 4, "schools": []}) as request:
+        with mock.patch.object(schoolfit_api, "request_json", return_value={"school": {}, "vacancy": {}, "admission": {}}) as request:
             schoolfit_api.run(args)
-        _, _, path = request.call_args.args
-        self.assertEqual(path, "/api/compare")
-        self.assertEqual(request.call_args.kwargs["params"]["ids"], ["a", "b", "c", "d"])
+        self.assertEqual(request.call_count, 4)
+        self.assertEqual(
+            [call.args[2] for call in request.call_args_list],
+            [f"/api/skill/schools/{school_id}/decision-brief" for school_id in "abcd"],
+        )
 
     def test_deep_compare_include_detail_uses_multiple_detail_requests(self):
         args = schoolfit_api.build_parser().parse_args([
@@ -1496,13 +1515,12 @@ class SchoolFitApiTests(unittest.TestCase):
             "json",
         ])
         with mock.patch.object(schoolfit_api, "request_json", side_effect=[
-            {"count": 3, "schools": []},
-            {"school": {"slug": "a"}},
-            {"school": {"slug": "b"}},
-            {"school": {"slug": "c"}},
+            {"school": {"slug": "a"}, "vacancy": {}, "admission": {}},
+            {"school": {"slug": "b"}, "vacancy": {}, "admission": {}},
+            {"school": {"slug": "c"}, "vacancy": {}, "admission": {}},
         ]) as request:
             output = schoolfit_api.run(args)
-        self.assertEqual(request.call_count, 4)
+        self.assertEqual(request.call_count, 3)
         self.assertEqual(len(output["details"]), 3)
 
     def test_deep_compare_include_detail_deduplicates_duplicate_ids(self):
@@ -1514,16 +1532,14 @@ class SchoolFitApiTests(unittest.TestCase):
             "json",
         ])
         with mock.patch.object(schoolfit_api, "request_json", side_effect=[
-            {"count": 3, "schools": [{"slug": "a"}, {"slug": "a"}, {"slug": "b"}]},
-            {"slug": "a"},
-            {"slug": "b"},
+            {"school": {"slug": "a"}, "vacancy": {}, "admission": {}},
+            {"school": {"slug": "b"}, "vacancy": {}, "admission": {}},
         ]) as request:
             output = schoolfit_api.run(args)
-        self.assertEqual(request.call_count, 3)
-        self.assertEqual(len(output["details"]), 3)
-        self.assertEqual(output["details"][0]["slug"], "a")
-        self.assertEqual(output["details"][1]["slug"], "a")
-        self.assertEqual(output["details"][2]["slug"], "b")
+        self.assertEqual(request.call_count, 2)
+        self.assertEqual(len(output["details"]), 2)
+        self.assertEqual(output["details"][0]["school"]["slug"], "a")
+        self.assertEqual(output["details"][1]["school"]["slug"], "b")
 
     def test_search_brief_compact_reduces_payload(self):
         args = schoolfit_api.build_parser().parse_args([

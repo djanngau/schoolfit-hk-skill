@@ -1,6 +1,6 @@
 # SchoolFit
 
-Version: `1.2.1`
+Version: `1.3.0`
 
 SchoolFit is an evidence-first Hong Kong school admissions and school selection skill for agent platforms. It helps OpenClaw, ArkAgent, Claude Code, and compatible agents answer secondary school, primary school, kindergarten, international school, and postsecondary family questions with bounded data access, conservative ranking, and clear source separation.
 
@@ -12,7 +12,7 @@ The skill is designed for real parent conversations, not database dumping. It tu
 - Understands parent language such as district, commute, Band reference, EMI/CMI preference, DSS/private exclusions, SEN support, admissions, vacancies, yearly range, and application timing.
 - Resolves fuzzy school names, Chinese/English names, and common acronyms before detail lookups.
 - Builds parent-ready shortlists across `Reach`, `Match`, `Safe`, `首選`, `穩陣`, `備選`, and `暫不建議` buckets.
-- Compares up to four schools and explains practical differences, risks, and next steps.
+- Compares up to four schools by aggregating their current decision briefs, including practical differences, risks, and next steps.
 - Produces compact single-school decision briefs and application plans.
 - Checks EDB vacancy records, admissions notices, and primary-secondary relationship data when available.
 - Refuses off-topic, model-probing, internal-data extraction, jailbreak, and deliberate token-wasting requests before making SchoolFit or model calls.
@@ -79,6 +79,10 @@ SchoolFit responses are optimized for downstream AI models through `llmBrief.age
 - Ask at most three optional follow-up questions.
 - Never ask for student full name, HKID, phone, address, report-card PDFs, or private documents.
 - For high-freshness facts, verify only against official school or notice URLs returned in the current SchoolFit payload. Do not use search engines, guessed domains, social media, maps, or broad web browsing.
+
+## Current SchoolFit Workflow
+
+The redesigned SchoolFit site is organized around `Today`, `Explore`, `Advisor`, and `Applications`. The former comparison workspace and `/api/compare` endpoint are retired. The compatibility commands `compare` and `deep-compare` remain available, but now aggregate current per-school decision briefs. Parent-facing next steps should open the returned school detail pages, save the schools worth keeping, and use [schoolfit.hk/applications](https://schoolfit.hk/applications) to add schools and track applications.
 
 ## Safety Boundary
 

@@ -43,6 +43,7 @@ def main() -> int:
     version_match = re.search(r'^version:\s*([0-9]+\.[0-9]+\.[0-9]+)$', skill, re.MULTILINE)
     version = version_match.group(1) if version_match else ""
     checks.append(("version_current", bool(version) and f'SKILL_VERSION = "{version}"' in script))
+    checks.append(("public_versions_current", f"Version: `{version}`" in read(ROOT / "README.md") and f"Version: `{version}`" in read(ROOT / "MARKETPLACE.md")))
     checks.append(("clawhub_slug_current", "clawhub:schoolfit-hk" not in public_text and "clawhub.ai/djanngau/schoolfit-hk" not in public_text))
     checks.append(("brand_current", "SchoolFit HK Skill" not in public_text and "Schoolfit Hk" not in public_text))
     checks.append(("no_legacy_install_path", "sh skill/bin/install.sh" not in public_text and "node skill/bin/schoolfit-skill.mjs" not in public_text))
@@ -50,6 +51,8 @@ def main() -> int:
     checks.append(("runtime_no_local_doc_reads", "with open" not in script and "README.md" not in script and "MARKETPLACE.md" not in script))
     checks.append(("no_packaged_maintenance_commands", "self-check" not in skill and "marketplace-demo" not in script))
     checks.append(("no_removed_commands_in_public_docs", "self-check" not in public_text and "marketplace-demo" not in public_text))
+    checks.append(("no_retired_compare_endpoint_runtime", "/api/compare" not in script))
+    checks.append(("current_application_workflow", "https://schoolfit.hk/applications" in script and "https://schoolfit.hk/applications" in public_text))
     checks.append(("query_disclosure_present", "Query disclosure" in skill and "https://schoolfit.hk/api/..." in skill))
     clawhubignore_lines = set(clawhubignore.splitlines())
     checks.append(("clawhubignore_excludes_examples", "examples/" in clawhubignore_lines))

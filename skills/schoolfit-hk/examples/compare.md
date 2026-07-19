@@ -12,6 +12,8 @@ Recommended helper call:
 python3 scripts/schoolfit_api.py deep-compare sha-tin-methodist-college,ying-wa-girls-school --skill-code "PASTE_CODE" --include-detail --format markdown
 ```
 
+`deep-compare` now aggregates the current decision brief for each school. It does not call the retired SchoolFit comparison workspace endpoint.
+
 Answer style:
 
 - Explain the main differences first.

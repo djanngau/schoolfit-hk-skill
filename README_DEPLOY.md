@@ -9,8 +9,8 @@ Release path:
 - Create a GitHub Release for every public publish. Do not run standalone
   tag-only publishing.
 - Publish or verify the matching `schoolfit` package version in ClawHub.
-- Keep the GitHub Release version and ClawHub version aligned. The next public
-  release after `1.1.11` starts at `1.2.0`, then increments from there.
+- Keep the GitHub Release version and ClawHub version aligned. The current
+  redesigned-product compatibility release is `1.3.0`, then increments from there.
 - Use skills.sh and direct GitHub install only as fallback discovery paths.
 - Do not add server `.env`, GHCR, `ops/deploy.sh`, or container healthcheck
   requirements here unless the project is explicitly converted into a service.
@@ -29,6 +29,7 @@ python3 skills/schoolfit-hk/scripts/schoolfit_api.py quick-start --format json
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py metadata --skill-code schoolfit-openclaw-v1-reserved --format json
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py advisor-search --skill-code schoolfit-openclaw-v1-reserved --q "沙田 Band 1 英文 男女校，重視校風，不考慮直資" --intent recommend --no-dss --include-decision-brief --page-size 5 --format json
 python3 skills/schoolfit-hk/scripts/schoolfit_api.py decision-brief sha-tin-methodist-college --skill-code schoolfit-openclaw-v1-reserved --format json
+python3 skills/schoolfit-hk/scripts/schoolfit_api.py deep-compare sha-tin-methodist-college,ying-wa-girls-school --skill-code schoolfit-openclaw-v1-reserved --include-detail --format json
 git diff --check
 ```
 
@@ -48,6 +49,8 @@ Release readiness:
   SchoolFit service exposes them.
 - Confirm `decision-brief` works for a known slug before publishing updated
   examples or marketplace text.
+- Confirm `compare` and `deep-compare` aggregate current decision briefs and do
+  not call the retired `/api/compare` endpoint.
 - After publish, confirm ClawHub `inspect`, the security audit page, SkillSpector,
   VirusTotal, and LLM scanner are clean or explicitly document any remaining
   platform-side pending state.
